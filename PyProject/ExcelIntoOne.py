@@ -38,7 +38,7 @@ if __name__ == "__main__":
     for i in range(4):
         excel_files.append("ResultExcel\\output_" + str(i) + ".xlsx")
     # Output file path
-    output_excel = "ResultExcel\\Stat_Final.xlsx"
+    output_excel = "ResultExcel\\Stat_Final_" + sys.argv[2] + ".xlsx"
 
     # Call the function to merge the files
     merge_excel_sheets_to_one_row(excel_files, output_excel)
