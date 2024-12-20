@@ -8,7 +8,7 @@ __name__ = "__main__"
 #__name__ = "__TEXTTOEXCEL__"
 
 
-Img_Path = "Deploy1\\Pengus_Panini_Stella_Engel_3.PNG"
+Img_Path = "Deploy1\\Pengus_Panini_Stella_Engel_2.PNG"
 
 Slice_Path = "Result\\Slices\\final_"
 Stat_Path = "Result\\Slices\\Stat_slice_"
