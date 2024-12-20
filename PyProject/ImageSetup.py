@@ -14,11 +14,11 @@ def process_image(input_image_path, output_folder):
     # Slice the image into four 452x745 pixel images
     slices = []
     slice_width = 450
-    slice_height = 745
+    slice_height = 450
 
     for i in range(4):  # Slice vertically
         left = i * slice_width
-        upper = 0
+        upper = 150
         right = left + slice_width
         lower = upper + slice_height
         
