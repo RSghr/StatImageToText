@@ -9,16 +9,16 @@ def process_image(input_image_path, output_folder):
     resized_img = img.resize((1818, 745))
 
     # Save resized image (optional, for debugging)
-    resized_img.save(f"{output_folder}\\resized_image.png")
+    resized_img.save(f"{output_folder}\\resized_image" + str(sys.argv[2]) + ".png")
 
     # Slice the image into four 452x745 pixel images
     slices = []
     slice_width = 450
-    slice_height = 745
+    slice_height = 450
 
     for i in range(4):  # Slice vertically
         left = i * slice_width
-        upper = 0
+        upper = 150
         right = left + slice_width
         lower = upper + slice_height
         

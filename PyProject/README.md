@@ -12,7 +12,29 @@ I have to write a whole setup with the pip commands and such.
 
 you need to get ocr_env in your project.
 
-MAINPROGRAM :
-It takes as input the image path ==> Img_Path
-First ImageSetup will generate all the images in Silces folder
-They will be processed by ImageToText into the other folders
+MainProgram.py :
+
+__main__
+    Excecute the whole project.
+__IMGSETUP__
+    Creates an image for each helldiver
+__IMGTOSTAT__
+    Convert each image into separated image for each stat (from Kills to Samples extracted)
+__IMGTOTEXT__
+    Converts each stat into a text file that contains the stat.
+    Returns "0" if the script does not recognize the text and is empty. (Could be changed to -1, but 0 is good as it usually fails to convert 0 in text)
+__TEXTTOEXCEL__
+    Gathers all the stats into one spreadsheet, alongside one for each helldiver.
+
+You can just comment the mode you want.
+
+Clear_Env.py :
+
+The script deletes all .png .txt and .xlsx
+
+__Result__
+    Clear the result folder
+__ResultExcel__
+    Clear the ResultExcel folder
+__All__
+    Clear the whole project

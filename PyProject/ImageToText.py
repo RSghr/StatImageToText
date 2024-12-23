@@ -75,7 +75,7 @@ def main(image_path):
     # Step 2: Save the preprocessed image for debugging (optional)
     cv2.imwrite("Result\\Attendee" + sys.argv[3] + "\\preprocessed_image.png", preprocessed_image)
 
-    custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789%'
+    custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789%.'
 
     # Step 3: Extract text with Tesseract
     #extracted_text = extract_text_with_tesseract(preprocessed_image)
@@ -96,10 +96,13 @@ def save_string_to_file(string_input, file_name="output_.txt"):
     :param file_name: The name of the output file (default: output.txt).
     """
     try:
-        file_name = "Result\\Attendee" + sys.argv[3] + "\\OUTPUT_Test.txt"
+        file_name = "Result\\Attendee" + sys.argv[3] + "\\OUTPUT_Test_" + sys.argv[4] + ".txt"
         # Open the file in write mode
         with open(file_name, 'w') as file:
-            file.write(string_input)
+            if string_input == "":
+                file.write("0")
+            else:
+                file.write(string_input)
         print(f"String saved to {file_name} successfully!")
     except Exception as e:
         print(f"An error occurred: {e}")
