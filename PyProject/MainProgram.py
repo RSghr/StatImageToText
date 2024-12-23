@@ -15,7 +15,7 @@ Text_Folder = "Result\\Attendee"
 def full_process(mission_id, Img_Path):
 
     Img_Path = Img_Path + str(mission_id) + ".PNG"
-    subprocess.run(['python', 'ImageSetup.py', Img_Path])
+    subprocess.run(['python', 'ImageSetup.py', Img_Path, str(mission_id)])
 
     for i in range(4):
         subprocess.run(['python', 'StatIsolation.py', Slice_Path + str(i) + ".png"])
@@ -35,6 +35,7 @@ if __name__ == "__main__":
         full_process(i + 1, Img_Path)
 
 if __name__ == "__IMGSETUP__":
+    Img_Path = "Deploy5\\Dalua_Bolide_Panzer_Scorpion_1.png"
     subprocess.run(['python', 'ImageSetup.py', Img_Path])
 
 if __name__ == "__IMGTOSTAT__":
