@@ -5,9 +5,11 @@ def process_image(input_image_path, output_folder):
     # Load the image
     img = Image.open(input_image_path)
 
-    # Resize the image to 1818x745 pixels
-    resized_img = img.resize((1818, 745))
+    init_Ratio = img.width / img.height
 
+    # Resize the image to 1818x745 pixels
+    resized_img = img.resize((1818, int(1818 / init_Ratio)))
+    
     # Save resized image (optional, for debugging)
     resized_img.save(f"{output_folder}\\resized_image" + str(sys.argv[2]) + ".png")
 
