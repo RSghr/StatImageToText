@@ -29,13 +29,14 @@ if __name__ == "__main__":
     _, _, files = next(os.walk("Deploy5\\"))
     file_count = len(files)
 
-    Img_Path = "Deploy5\\Dalua_Bolide_Panzer_Scorpion_"
+    Img_Path = "Deploy6\\Eight_Jullox_Pengus_Janus_"
 
     for i in range(file_count):
         full_process(i + 1, Img_Path)
+    subprocess.run(['python', 'OperationToSheet.py'])
 
 if __name__ == "__IMGSETUP__":
-    Img_Path = "Deploy5\\Dalua_Bolide_Panzer_Scorpion_1.png"
+    Img_Path = "Deploy6\\Eight_Jullox_Pengus_Janus_1.png"
     subprocess.run(['python', 'ImageSetup.py', Img_Path])
 
 if __name__ == "__IMGTOSTAT__":

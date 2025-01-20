@@ -102,10 +102,27 @@ def save_string_to_file(string_input, file_name="output_.txt"):
             if string_input == "":
                 file.write("0")
             else:
+                string_input = string_input.replace(".", ",")
+                string_input = string_fix(string_input)
                 file.write(string_input)
         print(f"String saved to {file_name} successfully!")
     except Exception as e:
         print(f"An error occurred: {e}")
+
+def string_fix(s):
+    # Check if the string contains ',' but not '%'
+    if ' ' in s:
+    # Keep only the part of the string before the first space
+        s = s.split(' ')[0]
+    
+    if ',' in s and '%' not in s:
+        # Find the position of the comma
+        parts = s.split(',')
+        if len(parts) == 2 and len(parts[1]) <= 2:
+            # Add '0' at the end if there are 2 or fewer characters after the comma
+            s = parts[0] + parts[1] + '0'
+        s = s.replace('', '')
+    return s
 
 if __name__ == "__main__":
     # Input image path
