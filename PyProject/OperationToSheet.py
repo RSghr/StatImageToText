@@ -14,8 +14,8 @@ def merge_excel_mission_to_one_Sheet(mission1, mission2, mission3):
     merged_df = pd.concat([df1, separator, df2, separator, df3], ignore_index=True)
 
     # Save the merged DataFrame to a new Excel file
-    output_file = 'ResultExcel\\All_Operation.xlsx'
+    output_file = sys.argv[1] + "\\ResultExcel\\All_Operation.xlsx"
     merged_df.to_excel(output_file, index=False, header=False)
 
 if __name__ == "__main__":
-    merge_excel_mission_to_one_Sheet("ResultExcel\\Stat_Final_1.xlsx", "ResultExcel\\Stat_Final_2.xlsx", "ResultExcel\\Stat_Final_3.xlsx")
+    merge_excel_mission_to_one_Sheet(sys.argv[1] + "\\ResultExcel\\Stat_Final_1.xlsx", sys.argv[1] + "\\ResultExcel\\Stat_Final_2.xlsx", sys.argv[1] + "\\ResultExcel\\Stat_Final_3.xlsx")

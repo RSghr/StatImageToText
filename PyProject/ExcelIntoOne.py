@@ -28,7 +28,6 @@ def merge_excel_sheets_to_one_row(excel_files, output_excel):
     # Save the DataFrame to a new Excel file
     try:
         merged_df.to_excel(output_excel, index=False, header=False, engine='openpyxl')
-        print(f"Merged data has been written to {output_excel}")
     except Exception as e:
         print(f"Error writing to Excel file: {e}")
 
@@ -36,9 +35,9 @@ if __name__ == "__main__":
     # List of Excel files to merge
     excel_files = []
     for i in range(4):
-        excel_files.append("ResultExcel\\output_" + str(i) + ".xlsx")
+        excel_files.append(sys.argv[3] + "\\ResultExcel\\output_" + str(i) + ".xlsx")
     # Output file path
-    output_excel = "ResultExcel\\Stat_Final_" + sys.argv[2] + ".xlsx"
+    output_excel = sys.argv[3] + "\\ResultExcel\\Stat_Final_" + sys.argv[2] + ".xlsx"
 
     # Call the function to merge the files
     merge_excel_sheets_to_one_row(excel_files, output_excel)

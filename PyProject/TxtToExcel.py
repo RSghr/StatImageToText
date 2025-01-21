@@ -32,7 +32,6 @@ def insert_txt_into_spreadsheet(txt_files, output_excel):
     # Save DataFrame to Excel
     try:
         dataframe.to_excel(output_excel, index=False, header=False, engine='openpyxl')
-        print(f"Data has been written to {output_excel}")
     except Exception as e:
         print(f"Error writing to Excel file: {e}")
 
@@ -40,7 +39,7 @@ if __name__ == "__main__":
     
     for i in range(4):
         txt_files = []
-        output_excel = "ResultExcel\\output_" + str(i) + ".xlsx"
+        output_excel = sys.argv[2] + "\\ResultExcel\\output_" + str(i) + ".xlsx"
         for j in range (8):
-            txt_files.append("Result\\Attendee" + str(i) + "\\OUTPUT_Test_" + str(j) + ".txt")
+            txt_files.append(sys.argv[2] + "\\Result\\Attendee" + str(i) + "\\OUTPUT_Test_" + str(j) + ".txt")
         insert_txt_into_spreadsheet(txt_files, output_excel)
