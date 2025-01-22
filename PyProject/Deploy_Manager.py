@@ -2,6 +2,7 @@ import subprocess
 import os
 import shutil
 import re
+import time
 from PIL import Image
 
 # Define the base folder where the images are located
@@ -61,7 +62,7 @@ for file_name in os.listdir(base_folder):
                 grouped_files[main_prefix] = []
             grouped_files[main_prefix].append(file_path)
 
-
+#Create directories for each deployment detected
 def Create_Directory():
     for main_prefix, files in grouped_files.items():
         folder_name = os.path.join(output_folder, main_prefix)
@@ -96,7 +97,12 @@ for folder_name in os.listdir(output_folder):
     if os.path.isdir(folder_path):
         # Launch MainProgram.py with the folder and name as arguments
         try:
+            ProcessStart = time.time()
             subprocess.run(["python", "MainProgram.py", folder_path, folder_name], check=True)
+            ProcessEnd = time.time()
+            time_elapsed = ProcessEnd - ProcessStart
+            print(f"MainProgram elapsed: {time_elapsed:.2f} seconds.")   
+            
         except subprocess.CalledProcessError as e:
             print(f"Error while processing folder '{folder_name}': {e}")
 
