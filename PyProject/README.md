@@ -1,6 +1,10 @@
 STATS TO TEXT
 
-Just launch MainProgram.py and it will create the slices, and text in each attendee folder (attendee 0 is the host)
+You need to launch Deploy_Manager.py, it will go over the MASS_DEPLOY folder, make sure all the images have the correct name template as well as resolution.
+
+It will create a new folder that separates each deployment and go over each one through the same process as before (attendee 0 is the host)
+
+So far : 10 deployments in 15min
 
 It's still being tuned.
 
@@ -12,22 +16,7 @@ I have to write a whole setup with the pip commands and such.
 
 you need to get ocr_env in your project.
 
-MainProgram.py :
-
-__main__
-    Excecute the whole project.
-__IMGSETUP__
-    Creates an image for each helldiver
-__IMGTOSTAT__
-    Convert each image into separated image for each stat (from Kills to Samples extracted)
-__IMGTOTEXT__
-    Converts each stat into a text file that contains the stat.
-    Returns "0" if the script does not recognize the text and is empty. (Could be changed to -1, but 0 is good as it usually fails to convert 0 in text)
-__TEXTTOEXCEL__
-    Gathers all the stats into one spreadsheet, alongside one for each helldiver.
-
-You can just comment the mode you want.
-
+####################NOT UPDATED NEEDS TUNING###################
 Clear_Env.py :
 
 The script deletes all .png .txt and .xlsx

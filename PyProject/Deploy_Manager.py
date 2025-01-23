@@ -2,11 +2,26 @@ import subprocess
 import os
 import shutil
 import re
+import time
+import datetime
 from PIL import Image
+import logging
 
 # Define the base folder where the images are located
 base_folder = "MASS_DEPLOY"
 output_folder = "Mass Deploy Sorted"
+
+log_file = 'Log_' + datetime.today().strftime('%Y%m%d_%H%M%S') + '.txt'
+
+logging.basicConfig(filename='Log.txt', level=logging.DEBUG, format='')
+
+
+if os.path.exists(log_file):
+    os.remove(log_file) 
+
+def Log_Print(data):
+    logging.info(data)
+    print(data)
 
 # Create output folder if it doesn't exist
 if not os.path.exists(output_folder):
@@ -44,7 +59,7 @@ for file_name in os.listdir(base_folder):
                     # Delete the original file
                     os.remove(file_path) 
             except Exception as e:
-                print(f"Failed to convert {file_name}: {e}")
+                Log_Print(f"Failed to convert {file_name}: {e}")
 
 # Iterate through files in the base folder
 for file_name in os.listdir(base_folder):
@@ -61,7 +76,7 @@ for file_name in os.listdir(base_folder):
                 grouped_files[main_prefix] = []
             grouped_files[main_prefix].append(file_path)
 
-
+#Create directories for each deployment detected
 def Create_Directory():
     for main_prefix, files in grouped_files.items():
         folder_name = os.path.join(output_folder, main_prefix)
@@ -86,7 +101,9 @@ def Create_Directory():
 # Copy grouped files into their respective folders
 Create_Directory()
 
-print("Files have been sorted and copied successfully.")
+Log_Print("Files have been sorted and copied successfully.")
+
+ProcessStartOverall = time.time()
 
 for folder_name in os.listdir(output_folder):
     folder_path = os.path.join(output_folder, folder_name)
@@ -96,8 +113,18 @@ for folder_name in os.listdir(output_folder):
     if os.path.isdir(folder_path):
         # Launch MainProgram.py with the folder and name as arguments
         try:
+            ProcessStart = time.time()
             subprocess.run(["python", "MainProgram.py", folder_path, folder_name], check=True)
+            ProcessEnd = time.time()
+            time_elapsed = ProcessEnd - ProcessStart
+            Log_Print(f"MainProgram elapsed: {time_elapsed:.2f} seconds.")   
+            
         except subprocess.CalledProcessError as e:
-            print(f"Error while processing folder '{folder_name}': {e}")
+            Log_Print(f"Error while processing folder '{folder_name}': {e}")
+ProcessEnd = time.time()
+time_elapsed = ProcessEnd - ProcessStartOverall
+Log_Print(f"Deploy_Manager elapsed: {time_elapsed:.2f} seconds.")   
 
-print("All folders have been processed.")
+Log_Print("All folders have been processed.")
+os.close('Log.txt')
+os.rename('Log.txt', log_file)
