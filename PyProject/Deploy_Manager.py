@@ -11,16 +11,17 @@ import logging
 base_folder = "MASS_DEPLOY"
 output_folder = "Mass Deploy Sorted"
 
-log_file = 'Log_' + datetime.today().strftime('%Y%m%d_%H%M%S') + '.txt'
+log_file = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+if os.path.exists('Log.txt'):
+    os.rename('Log.txt', "Log_" + log_file + ".log")
 
 logging.basicConfig(filename='Log.txt', level=logging.DEBUG, format='')
 
-
-if os.path.exists(log_file):
-    os.remove(log_file) 
-
 def Log_Print(data):
     logging.info(data)
+    logging.error(data)
     print(data)
 
 # Create output folder if it doesn't exist
@@ -97,6 +98,9 @@ def Create_Directory():
         # Copy files into the group folder
         for file_path in files:
             shutil.copy(file_path, folder_name)
+    
+    if not os.path.exists("All_Operation_Output"):
+        os.makedirs("All_Operation_Output")
 
 # Copy grouped files into their respective folders
 Create_Directory()
@@ -104,7 +108,7 @@ Create_Directory()
 Log_Print("Files have been sorted and copied successfully.")
 
 ProcessStartOverall = time.time()
-
+    
 for folder_name in os.listdir(output_folder):
     folder_path = os.path.join(output_folder, folder_name)
     folder_name = folder_name + "_"
@@ -113,12 +117,13 @@ for folder_name in os.listdir(output_folder):
     if os.path.isdir(folder_path):
         # Launch MainProgram.py with the folder and name as arguments
         try:
+            Log_Print("Processing Operation : " + folder_name)
             ProcessStart = time.time()
             subprocess.run(["python", "MainProgram.py", folder_path, folder_name], check=True)
             ProcessEnd = time.time()
             time_elapsed = ProcessEnd - ProcessStart
             Log_Print(f"MainProgram elapsed: {time_elapsed:.2f} seconds.")   
-            
+
         except subprocess.CalledProcessError as e:
             Log_Print(f"Error while processing folder '{folder_name}': {e}")
 ProcessEnd = time.time()
@@ -126,5 +131,3 @@ time_elapsed = ProcessEnd - ProcessStartOverall
 Log_Print(f"Deploy_Manager elapsed: {time_elapsed:.2f} seconds.")   
 
 Log_Print("All folders have been processed.")
-os.close('Log.txt')
-os.rename('Log.txt', log_file)
