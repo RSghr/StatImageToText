@@ -3,6 +3,7 @@ import subprocess
 import os
 import sys
 import time
+import logging
 
 __name__ = "__main__"
 #__name__ = "__IMGSETUP__"
@@ -12,6 +13,12 @@ __name__ = "__main__"
 
 ProcessStart = time.time()
 ProcessEnd = time.time()
+
+logging.basicConfig(filename='Log.txt', level=logging.DEBUG, format='')
+
+def Log_Print(data):
+    logging.info(data)
+    print(data)
 
 def full_process(mission_id, Img_Path, folder_name):
 
@@ -28,7 +35,7 @@ def full_process(mission_id, Img_Path, folder_name):
     subprocess.run(['python', 'ImageSetup.py', Img_Path, str(mission_id), folder_name])
     ProcessEnd = time.time()
     time_elapsed = ProcessEnd - ProcessStart
-    print(f"ImageSetup elapsed: {time_elapsed:.2f} seconds.")
+    Log_Print(f"ImageSetup elapsed: {time_elapsed:.2f} seconds.")
 
     for i in range(4):
 
@@ -37,7 +44,7 @@ def full_process(mission_id, Img_Path, folder_name):
         subprocess.run(['python', 'StatIsolation.py', Slice_Path + str(i) + ".png", folder_name])
         ProcessEnd = time.time()
         time_elapsed = ProcessEnd - ProcessStart
-        print(f"StatIsolation elapsed: {time_elapsed:.2f} seconds.")
+        Log_Print(f"StatIsolation elapsed: {time_elapsed:.2f} seconds.")
         
         #Convert from Image to Text
         for j in range(8):
@@ -45,21 +52,21 @@ def full_process(mission_id, Img_Path, folder_name):
             subprocess.run(['python', 'ImageToText.py', Stat_Path + str(j) + ".png", Text_Folder + str(i), str(i), str(j), folder_name])
             ProcessEnd = time.time()
             time_elapsed = ProcessEnd - ProcessStart
-            print(f"ImageToText elapsed: {time_elapsed:.2f} seconds.")
+            Log_Print(f"ImageToText elapsed: {time_elapsed:.2f} seconds.")
         
         #Concat Text to Spreadsheet
         ProcessStart = time.time()
         subprocess.run(['python', 'TxtToExcel.py', str(i), folder_name])
         ProcessEnd = time.time()
         time_elapsed = ProcessEnd - ProcessStart
-        print(f"TxtToExcel elapsed: {time_elapsed:.2f} seconds.")
+        Log_Print(f"TxtToExcel elapsed: {time_elapsed:.2f} seconds.")
         
         #Concat the whole mission in a single Spreadsheet (4 lines)
         ProcessStart = time.time()
         subprocess.run(['python', 'ExcelIntoOne.py', str(i), str(mission_id), folder_name])
         ProcessEnd = time.time()
         time_elapsed = ProcessEnd - ProcessStart
-        print(f"ExcelIntoOne elapsed: {time_elapsed:.2f} seconds.")
+        Log_Print(f"ExcelIntoOne elapsed: {time_elapsed:.2f} seconds.")
 
 if __name__ == "__main__":
 
@@ -75,13 +82,13 @@ if __name__ == "__main__":
         full_process(i + 1, Img_Path, sys.argv[1])
         ProcessEnd = time.time()
         time_elapsed = ProcessEnd - ProcessStart
-        print(f"full_process elapsed: {time_elapsed:.2f} seconds.")    
+        Log_Print(f"full_process elapsed: {time_elapsed:.2f} seconds.")    
     
     ProcessStart = time.time()
-    subprocess.run(['python', 'OperationToSheet.py', sys.argv[1]])
+    subprocess.run(['python', 'OperationToSheet.py', sys.argv[1], sys.argv[2]])
     ProcessEnd = time.time()
     time_elapsed = ProcessEnd - ProcessStart
-    print(f"OperationToSheet elapsed: {time_elapsed:.2f} seconds.")    
+    Log_Print(f"OperationToSheet elapsed: {time_elapsed:.2f} seconds.")    
 
 
 #NOT USED ANYMORE - IT IS NOT UP TO DATE WITH THE CURRENT STRUCTURE
