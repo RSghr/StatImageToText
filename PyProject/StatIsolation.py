@@ -1,5 +1,6 @@
 from PIL import Image
 import sys
+import os
 
 def process_stat(input_image_path, output_folder):
     # Load the image
@@ -33,7 +34,7 @@ def process_stat(input_image_path, output_folder):
     return slices
 
 def main():
-    output_folder = "Result\\Slices"
+    output_folder = os.path.join(sys.argv[2], "Result\\Slices")
     #input_image_path = f"{output_folder}/final_0.png"
     input_image_path = sys.argv[1]
     final_images = process_stat(input_image_path, output_folder)

@@ -1,5 +1,6 @@
 from PIL import Image
 import sys
+import os
 
 def process_image(input_image_path, output_folder):
     # Load the image
@@ -9,7 +10,7 @@ def process_image(input_image_path, output_folder):
 
     # Resize the image to 1818x745 pixels
     resized_img = img.resize((1818, int(1818 / init_Ratio)))
-    
+
     # Save resized image (optional, for debugging)
     resized_img.save(f"{output_folder}\\resized_image" + str(sys.argv[2]) + ".png")
 
@@ -58,7 +59,7 @@ def process_image(input_image_path, output_folder):
 
 def main():
     input_image_path = sys.argv[1]
-    output_folder = "Result\\Slices"
+    output_folder = os.path.join(sys.argv[3], "Result\\Slices")
     final_images = process_image(input_image_path, output_folder)
     print("Processing complete. Final images saved:", final_images)
 

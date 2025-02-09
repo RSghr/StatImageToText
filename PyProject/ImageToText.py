@@ -7,7 +7,7 @@ from pytesseract import Output
 # Set up Tesseract executable path (change this to your Tesseract path if necessary)
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-def convert_non_white_to_black(image_path, output_path="Result\\Attendee" + sys.argv[3] + "\\output_image.png"):
+def convert_non_white_to_black(image_path, output_path= sys.argv[5] + "\\Result\\Attendee" + sys.argv[3] + "\\output_image.png"):
     """
     Converts all non-white pixels in an image to black.
 
@@ -41,7 +41,7 @@ def preprocess_image(image_path):
     convert_non_white_to_black(image_path)
 
     # Read the image in grayscale
-    image = cv2.imread("Result\\Attendee" + sys.argv[3] + "\\output_image.png", cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(sys.argv[5] + "\\Result\\Attendee" + sys.argv[3] + "\\output_image.png", cv2.IMREAD_GRAYSCALE)
 
     # Resize the image (optional, improves OCR for small images)
     #image = cv2.resize(image, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
@@ -73,7 +73,7 @@ def main(image_path):
     preprocessed_image = preprocess_image(image_path)
 
     # Step 2: Save the preprocessed image for debugging (optional)
-    cv2.imwrite("Result\\Attendee" + sys.argv[3] + "\\preprocessed_image.png", preprocessed_image)
+    cv2.imwrite(sys.argv[5] + "\\Result\\Attendee" + sys.argv[3] + "\\preprocessed_image.png", preprocessed_image)
 
     custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789%.'
 
@@ -83,8 +83,6 @@ def main(image_path):
     extracted_text = pytesseract.image_to_string(thresholded, config=custom_config)
 
     # Step 4: Output the extracted text
-    print("Extracted Text:")
-    print(extracted_text)
     
     save_string_to_file(extracted_text)
 
@@ -96,7 +94,7 @@ def save_string_to_file(string_input, file_name="output_.txt"):
     :param file_name: The name of the output file (default: output.txt).
     """
     try:
-        file_name = "Result\\Attendee" + sys.argv[3] + "\\OUTPUT_Test_" + sys.argv[4] + ".txt"
+        file_name = sys.argv[5] + "\\Result\\Attendee" + sys.argv[3] + "\\OUTPUT_Test_" + sys.argv[4] + ".txt"
         # Open the file in write mode
         with open(file_name, 'w') as file:
             if string_input == "":
@@ -105,7 +103,6 @@ def save_string_to_file(string_input, file_name="output_.txt"):
                 string_input = string_input.replace(".", ",")
                 string_input = string_fix(string_input)
                 file.write(string_input)
-        print(f"String saved to {file_name} successfully!")
     except Exception as e:
         print(f"An error occurred: {e}")
 
