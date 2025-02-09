@@ -29,12 +29,16 @@ def add_headers_to_excel(folder_path):
                 print(f"Skipping {file_name}: Column count mismatch.")
                 continue
 
-            # Add the header columns
-            df.columns = header_columns
+            # check if the spreadshet already has headers
+            if df.iloc[0].tolist() == header_columns:
+                print(f"Skipping {file_name}: Headers already present.")
+            else:
+                # Add the header columns
+                df.columns = header_columns
 
-            # Save the file back with headers
-            df.to_excel(file_path, index=False)
-            print(f"Headers added to {file_name}.")
+                # Save the file back with headers
+                df.to_excel(file_path, index=False)
+                print(f"Headers added to {file_name}.")
 
 # Define the input folder
 input_folder = sys.argv[1]

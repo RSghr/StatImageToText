@@ -2,6 +2,9 @@ import os
 import pandas as pd
 import subprocess
 
+def create_header(folder_path):
+    subprocess.run(['python', 'Add_Header.py', folder_path])
+
 def sum_columns_in_folder(folder_path, output_file):
     # Create an empty dictionary to store column-wise sums
     column_sums = {}
@@ -23,7 +26,6 @@ def sum_columns_in_folder(folder_path, output_file):
                     column_sums[col] += pd.to_numeric(df[col], errors='coerce').sum(skipna=True)  # Add sum, skipping NaN values
 
 
-    subprocess.run(['python', 'Add_Header.py', folder_path])
 
     # Create a DataFrame from the column sums
     output_df = pd.DataFrame(list(column_sums.items()), columns=['Column', 'Sum'])
@@ -37,6 +39,8 @@ input_folder = "All_Operation_Output"
 output_file = "Treated_Sheet\\Column_Sums.xlsx"
 
 # Run the function
-sum_columns_in_folder(input_folder, output_file)    
+create_header(input_folder)
+sum_columns_in_folder(input_folder, output_file)  
+
 
 print(f"Column sums have been written to {output_file}")

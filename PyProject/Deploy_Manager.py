@@ -34,6 +34,18 @@ pattern = re.compile(r"^(([a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+_[a-zA-Z0-9]+)_\
 # Dictionary to group files by their main prefix
 grouped_files = {}
 
+#Delete the uploader name
+def delete_Uploader():
+    for file_name in os.listdir(base_folder):
+        if " - " in file_name and file_name.endswith(".png"):
+            parts = file_name.split(" - ")
+            name_part = parts[0]
+            new_name = f"{name_part}.png"
+            old_path = os.path.join(base_folder, file_name)
+            new_path = os.path.join(base_folder, new_name)
+            os.rename(old_path, new_path)
+
+
 #Convert all pictures into PNG
 for file_name in os.listdir(base_folder):
     file_path = os.path.join(base_folder, file_name)
@@ -44,7 +56,7 @@ for file_name in os.listdir(base_folder):
         base_name, ext = os.path.splitext(file_name)
 
         # Only proceed for image files
-        if ext.lower() in [".jpg", ".jpeg", ".bmp", ".tiff", ".gif", ".webp"]:
+        if ext.lower() in [".jpg", ".jpeg", ".bmp", ".tiff", ".gif", ".webp"] or ext == ".PNG":
             try:
                 # Open the image file
                 with Image.open(file_path) as img:
@@ -62,8 +74,11 @@ for file_name in os.listdir(base_folder):
             except Exception as e:
                 Log_Print(f"Failed to convert {file_name}: {e}")
 
+delete_Uploader()
+
 # Iterate through files in the base folder
 for file_name in os.listdir(base_folder):
+    
     file_path = os.path.join(base_folder, file_name)
 
     # Check if it is a file
@@ -111,13 +126,13 @@ ProcessStartOverall = time.time()
     
 for folder_name in os.listdir(output_folder):
     folder_path = os.path.join(output_folder, folder_name)
-    folder_name = folder_name + "_"
 
     # Check if it is a directory
     if os.path.isdir(folder_path):
         # Launch MainProgram.py with the folder and name as arguments
         try:
             Log_Print("Processing Operation : " + folder_name)
+            folder_name = folder_name + "_"
             ProcessStart = time.time()
             subprocess.run(["python", "MainProgram.py", folder_path, folder_name], check=True)
             ProcessEnd = time.time()
