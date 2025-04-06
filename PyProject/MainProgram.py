@@ -41,7 +41,7 @@ def full_process(mission_id, Img_Path, folder_name):
 
         #Slicing the stats Found in \Slices
         ProcessStart = time.time()
-        subprocess.run(['python', 'StatIsolation.py', Slice_Path + str(i) + ".png", folder_name])
+        subprocess.run(['python', 'StatIsolation.py', Slice_Path + str(i) + ".png", folder_name, str(i)])
         ProcessEnd = time.time()
         time_elapsed = ProcessEnd - ProcessStart
         Log_Print(f"StatIsolation elapsed: {time_elapsed:.2f} seconds.")

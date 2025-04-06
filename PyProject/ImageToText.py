@@ -57,17 +57,6 @@ def preprocess_image(image_path):
 
     return image
 
-def extract_text_with_tesseract(image):
-    """
-    Perform OCR using Tesseract on the preprocessed image.
-    
-    :param image: Preprocessed image.
-    :return: Extracted text.
-    """
-    # Use Tesseract to extract text
-    text = pytesseract.image_to_string(image, lang='eng')
-    return text
-
 def main(image_path):
     # Step 1: Preprocess the image
     preprocessed_image = preprocess_image(image_path)
@@ -78,7 +67,6 @@ def main(image_path):
     custom_config = r'--oem 3 --psm 6 -c tessedit_char_whitelist=0123456789%.'
 
     # Step 3: Extract text with Tesseract
-    #extracted_text = extract_text_with_tesseract(preprocessed_image)
     _, thresholded = cv2.threshold(preprocessed_image, 150, 255, cv2.THRESH_BINARY)
     extracted_text = pytesseract.image_to_string(thresholded, config=custom_config)
 
