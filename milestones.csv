@@ -1,0 +1,40 @@
+# 505th milestones - edit freely, one line per track. Lines starting with # are ignored.
+# level:   regiment | company | player
+# stat:    kills | operations | planets | casualties | samples | deployments_month | participants | squad_full | accidentals | stims
+# faction: empty = all fronts together, "each" = one track per faction (Terminids, Automatons, Illuminates),
+#          or one faction name
+# steps:   the targets, separated by ;  (squad_full needs no steps)
+# title:   {n} = the target, {faction} = the faction. Empty = a default title.
+level,stat,faction,steps,title
+regiment,kills,,10000;25000;50000;100000;250000;500000;1000000;2500000;5000000;10000000,{n} enemies killed
+regiment,kills,each,10000;25000;50000;100000;250000;500000;1000000,{n} {faction} killed
+regiment,operations,,10;25;50;100;250;500;1000;2500;5000,{n} operations completed
+regiment,operations,each,10;25;50;100;250;500;1000,{n} operations against the {faction}
+regiment,planets,,5;10;25;50;75;100;150;200,Operations on {n} different planets
+regiment,casualties,,100;250;500;1000;2500;5000;10000;25000,{n} Helldivers fallen
+regiment,casualties,each,100;250;500;1000;2500;5000;10000,{n} Helldivers fallen to the {faction}
+regiment,samples,,500;1000;2500;5000;10000;25000;50000,{n} samples collected
+regiment,deployments_month,,10;25;50;75;100;150;200,{n} deployments in one month
+regiment,participants,,10;25;50;100;150;200;300;400;500,{n} Helldivers registered
+company,kills,,10000;25000;50000;100000;250000;500000;1000000;2500000,{n} enemies killed
+company,kills,each,10000;25000;50000;100000;250000;500000,{n} {faction} killed
+company,operations,,10;25;50;100;250;500;1000;2500,{n} operations completed
+company,operations,each,10;25;50;100;250;500,{n} operations against the {faction}
+company,planets,,5;10;25;50;75;100;150,Operations on {n} different planets
+company,casualties,,100;250;500;1000;2500;5000;10000,{n} Helldivers fallen
+company,casualties,each,100;250;500;1000;2500;5000,{n} Helldivers fallen to the {faction}
+company,samples,,500;1000;2500;5000;10000;25000,{n} samples collected
+company,deployments_month,,10;25;50;75;100,{n} deployments in one month
+company,participants,,10;25;50;75;100;150;200,{n} members registered
+company,squad_full,,,{squad}: every member registered
+player,kills,,1000;2500;5000;10000;25000;50000;100000;250000,{n} enemies killed
+player,kills,each,1000;2500;5000;10000;25000;50000,{n} {faction} killed
+player,operations,,10;25;50;100;250;500;1000,{n} operations
+player,operations,each,10;25;50;100;250,{n} operations against the {faction}
+player,planets,,5;10;25;50;100,Deployed on {n} different planets
+player,casualties,,50;100;250;500;1000;2500,Died {n} times
+player,casualties,each,50;100;250;500;1000,Died {n} times to the {faction}
+player,samples,,100;250;500;1000;2500;5000,{n} samples collected
+player,deployments_month,,5;10;20;30;50,{n} deployments in one month
+player,accidentals,,1;10;25;50;100,{n} accidental team kills
+player,stims,,100;250;500;1000;2500;5000,{n} stims used

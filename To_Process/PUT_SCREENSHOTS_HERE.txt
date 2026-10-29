@@ -1,0 +1,2 @@
+Put the stat-screen screenshots here (Host_Player2_Player3_Player4_X.png / .jpg, X = mission number), then double-click run.bat.
+The script only reads them: it never renames, converts or deletes anything.

@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>505th Stat Department</title>
+<style>
+:root{color-scheme:dark;
+ --bg:#121211;--surface:#1a1a19;--surface2:#232321;--line:#33332f;--grid:#2b2b28;
+ --text:#f0efec;--text2:#c3c2b7;--muted:#8f8e85;--accent:#ffe14d;--accent-ink:#121211;
+ --ok:#7ee787;--warn:#ffe14d;--err:#ff7b72;--s1:#3987e5}
+@media (prefers-color-scheme: light){:root{color-scheme:light;
+ --bg:#f4f3ef;--surface:#fcfcfb;--surface2:#f0efea;--line:#dcdad3;--grid:#e9e7e1;
+ --text:#0b0b0b;--text2:#52514e;--muted:#77766f;--accent:#e8c400;--accent-ink:#0b0b0b;
+ --ok:#1a7f37;--warn:#9a6700;--err:#cf222e;--s1:#2a78d6}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+header{background:var(--accent);color:var(--accent-ink);border-bottom:4px solid var(--text)}
+.wrap{max-width:1240px;margin:0 auto;padding:0 16px}
+header .wrap{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:flex-end;justify-content:space-between;padding:16px}
+h1{margin:0;font-size:clamp(20px,3vw,28px);letter-spacing:.04em;text-transform:uppercase;font-weight:800}
+.busy{font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+nav.tabs{display:flex;gap:2px;flex-wrap:wrap;margin-top:14px;border-bottom:1px solid var(--line)}
+nav.tabs button{font:inherit;font-weight:700;background:none;border:0;color:var(--text2);padding:10px 14px;cursor:pointer;
+ border-bottom:3px solid transparent;margin-bottom:-1px}
+nav.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+nav.tabs .badge[hidden]{display:none}
+nav.tabs .badge{display:inline-block;min-width:20px;padding:0 6px;margin-left:6px;border-radius:10px;background:var(--accent);
+ color:var(--accent-ink);font-size:12px;text-align:center}
+section.tab{display:none;padding:18px 0 40px}section.tab.on{display:block}
+h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--text2);margin:22px 0 10px;display:flex;align-items:center;gap:10px}
+h2::before{content:"";width:12px;height:12px;background:var(--accent);display:inline-block}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);padding:12px 14px;min-width:0}
+.tl{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--text2)}
+.tv{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.ts{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere}
+.tile.alert{border-left-color:var(--err)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button.b,a.b,label.b{font:inherit;font-weight:700;padding:9px 14px;border:1px solid var(--line);background:var(--surface);
+ color:var(--text);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+button.b:hover,a.b:hover,label.b:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-size:17px;padding:13px 26px}
+button.danger{border-color:var(--err);color:var(--err)}
+button:disabled{opacity:.5;cursor:default}
+.drop{border:2px dashed var(--line);background:var(--surface);padding:22px;text-align:center;color:var(--text2);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--surface2);color:var(--text)}
+.drop b{color:var(--text)}
+#log{background:#0d0d0c;color:#f0efec;font:12.5px/1.45 Consolas,ui-monospace,monospace;padding:10px 12px;height:330px;
+ overflow:auto;white-space:pre-wrap;border:1px solid var(--line)}
+#log .ok{color:#7ee787}#log .warn{color:#ffe14d}#log .err{color:#ff7b72}
+.grid2{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:900px){.grid2{grid-template-columns:1fr}}
+.tw{overflow:auto;border:1px solid var(--line);background:var(--surface);max-height:70vh}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--grid);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);background:var(--surface2);position:sticky;top:0;z-index:1}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr{cursor:default}tbody tr.sel td{background:var(--surface2)}
+tr.done td{color:var(--muted)}
+input[type=text],textarea{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);padding:6px 8px;width:100%}
+input[type=text]:focus,textarea:focus{outline:none;border-color:var(--accent)}
+.preview{position:sticky;top:10px;background:var(--surface);border:1px solid var(--line);padding:12px}
+.preview img{width:100%;height:auto;display:block;background:#000}
+.muted{color:var(--muted)}.small{font-size:13px}.ok{color:var(--ok)}.err{color:var(--err)}
+.card{background:var(--surface);border:1px solid var(--line);padding:16px;margin-bottom:12px}
+.card h3{margin:0 0 4px;font-size:15px}
+textarea{min-height:240px;font:13px/1.4 Consolas,ui-monospace,monospace}
+.toast{position:fixed;right:16px;bottom:16px;background:var(--surface2);border:1px solid var(--line);border-left:4px solid var(--accent);
+ padding:10px 14px;max-width:420px;display:none;z-index:9}
+.chk{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+.slotbar{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:8px 0}
+.slotbar div{text-align:center;font-size:12px;padding:3px;border:1px solid var(--line);color:var(--muted)}
+.slotbar div.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding:12px 0 24px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}@media (max-width:640px){.fgrid{grid-template-columns:1fr}}
+.fgrid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);font-weight:600}
+select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);padding:6px 8px;width:100%}
+.tag{display:inline-block;font-size:11px;font-weight:800;background:var(--accent);color:var(--accent-ink);padding:1px 6px;margin-right:4px}
+</style></head>
+<body>
+<header><div class="wrap"><h1>505th Stat Department</h1><div class="busy" id="busy">Ready</div></div></header>
+<div class="wrap">
+<nav class="tabs" id="tabs">
+ <button data-t="process" class="on">Process</button>
+ <button data-t="check">Check<span class="badge" id="badge" hidden></span></button>
+ <button data-t="players">Who is who</button>
+ <button data-t="history">History</button>
+ <button data-t="raids">Raids <span class="small muted">beta</span></button>
+ <button data-t="share">Share</button>
+ <button data-t="settings">Settings &amp; reset</button>
+</nav>
+
+<!-- PROCESS -->
+<section class="tab on" id="t-process">
+ <div class="tiles" id="tiles"></div>
+ <h2>Add files (optional)</h2>
+ <div class="drop" id="drop"><b>Drop the Drive .zip, the form .xlsx/.csv or screenshots here</b><br>
+  <span class="small">or click to choose files · not needed when the Google Drive folder is set</span>
+  <input type="file" id="pick" multiple hidden accept=".zip,.xlsx,.csv,.png,.jpg,.jpeg,.webp,.bmp"></div>
+ <h2>Run</h2>
+ <div class="row">
+  <button class="b primary" id="runPub" title="Run the report; if nothing is left to check, publish the website right away">Run &amp; publish</button>
+  <button class="b" id="run">Run report only</button>
+  <label class="chk small"><input type="checkbox" id="force"> Re-read every screenshot (slower)</label>
+ </div>
+ <h2>Log</h2>
+ <div id="log"></div>
+</section>
+
+<!-- CHECK -->
+<section class="tab" id="t-check">
+ <p class="muted small">Values the program wasn't sure about. Click a line to see the screenshot. Type the right
+ number (or <b>ok</b> if the value is right). For <b>player</b> lines: <b>ok</b>, the right callsign, or the in-game
+ name. Then <b>Save</b> and <b>Run report</b>.</p>
+ <div class="row" style="margin-bottom:10px">
+  <button class="b" id="saveCorr">Save answers</button>
+  <button class="b" id="saveRun">Save, run &amp; publish</button>
+  <label class="chk small"><input type="checkbox" id="showDone"> Show answered lines</label>
+  <span class="small muted" id="corrMsg"></span>
+ </div>
+ <div class="grid2">
+  <div class="tw"><table><thead><tr><th>Screenshot</th><th>Slot</th><th>Player</th><th>Value</th><th>Read</th><th style="min-width:120px">Your answer</th></tr></thead>
+   <tbody id="corrBody"></tbody></table></div>
+  <div class="preview" id="preview"><p class="muted">Click a line to see its screenshot.</p></div>
+ </div>
+</section>
+
+<!-- PLAYERS -->
+<section class="tab" id="t-players">
+ <p class="muted small">One line per callsign (never changes). <b>Also known as</b>: in-game names, old names,
+ separated by <b>;</b>. Filled automatically - fix a wrong name by moving it to the right callsign.</p>
+ <div class="row" style="margin-bottom:10px">
+  <input type="text" id="plFilter" placeholder="Search..." style="max-width:260px">
+  <button class="b" id="plAdd">+ Add callsign</button>
+  <button class="b" id="plSave">Save</button>
+  <span class="small muted" id="plMsg"></span>
+ </div>
+ <div class="tw"><table><thead><tr><th style="width:200px">Callsign</th><th>Also known as</th><th style="width:40px"></th></tr></thead>
+  <tbody id="plBody"></tbody></table></div>
+</section>
+
+<!-- HISTORY -->
+<section class="tab" id="t-history">
+ <p class="muted small">Every deployment logged so far. Untick <b>Count</b> to leave one out of the report (a test,
+ a duplicate); it stays in the history. Changes apply at the next Run report.</p>
+ <div class="row" style="margin-bottom:10px">
+  <label class="b">Add an old batch (stats.csv)…<input type="file" id="histFile" accept=".csv" hidden></label>
+  <span class="small muted" id="histMsg"></span>
+ </div>
+ <div class="tw"><table><thead><tr><th>Count</th><th>Date</th><th>Operation</th><th>Planet</th><th>Front</th><th>Diff.</th>
+  <th>Missions</th><th>Players</th><th class="num">Kills</th><th class="num">Deaths</th></tr></thead><tbody id="histBody"></tbody></table></div>
+</section>
+
+<!-- RAIDS (beta) -->
+<section class="tab" id="t-raids">
+ <p class="muted small">Declare a raid: the deployments in its time window are found for you (company / platoon raids:
+ only squads hosted by someone of that unit; other planets and outside hosts are listed but not ticked). Tick or untick
+ what belongs to it, save, then Run report. Shows on the <b>beta</b> pages only (Share &rarr; Beta &rarr; Raids).</p>
+ <div class="grid2">
+  <div>
+   <div class="card"><div class="row" style="justify-content:space-between"><h3>Raids</h3><button class="b" id="rdNew">+ New raid</button></div>
+    <div class="tw" style="margin-top:8px"><table><thead><tr><th>Start (Paris)</th><th>Raid</th><th>Unit</th><th>Planet</th><th class="num">Squads</th><th></th></tr></thead>
+    <tbody id="rdList"></tbody></table></div></div>
+   <div class="card" id="rdTagCard" hidden><h3>Tagged "Raid" in the form, not in a raid yet</h3>
+    <div class="tw"><table><thead><tr><th>Start (Paris)</th><th>Operation</th><th>Squad</th><th>Planet</th><th></th></tr></thead><tbody id="rdTagged"></tbody></table></div></div>
+  </div>
+  <div class="card" id="rdEdit" hidden>
+   <h3 id="rdTitle">New raid</h3>
+   <div class="fgrid">
+    <label>Name<input type="text" id="rdName" maxlength="80" placeholder="Operation Iron Wall"></label>
+    <label>Unit<select id="rdUnit"></select></label>
+    <label>Planet<select id="rdPlanet"></select></label>
+    <label>Start (UTC)<input type="datetime-local" id="rdStart"><span class="small muted" id="rdStartL"></span></label>
+    <label>End (UTC)<input type="datetime-local" id="rdEnd"><span class="small muted" id="rdEndL"></span></label>
+    <label>Notes (optional)<input type="text" id="rdNotes" maxlength="200"></label>
+   </div>
+   <div class="row" style="margin-top:10px"><button class="b" id="rdFind">Find deployments</button><span class="small muted" id="rdMsg"></span></div>
+   <div class="tw" style="margin-top:10px;max-height:46vh"><table><thead><tr><th></th><th>Start (Paris)</th><th>Operation</th><th>Squad (host first)</th><th>Planet</th><th>Note</th></tr></thead><tbody id="rdCand"></tbody></table></div>
+   <div class="row" style="margin-top:10px"><button class="b primary" id="rdSave" style="font-size:15px;padding:10px 20px">Save raid</button>
+    <button class="b" id="rdCancel">Cancel</button><button class="b danger" id="rdDel" hidden>Delete raid</button></div>
+  </div>
+ </div>
+</section>
+
+<!-- SHARE -->
+<section class="tab" id="t-share">
+ <div class="card"><h3>Report</h3>
+  <div class="row"><a class="b" href="/view/report.html" target="_blank" rel="noopener">Open report</a>
+   <a class="b" href="/view/players.html" target="_blank" rel="noopener">Open player lookup</a>
+   <a class="b" href="/view/units.html" target="_blank" rel="noopener">Open companies &amp; squads</a></div>
+  <p class="small muted">Companies &amp; squads come from the roster tabs of the answers spreadsheet (roster_raw.csv, refreshed every day, on every edit and with every form answer).</p></div>
+ <div class="card"><h3>Beta <span class="small muted">(this PC only, never published)</span></h3>
+  <p class="small muted">Test copies of the pages for future changes (beta.py). The live site is not affected.</p>
+  <div class="row"><a class="b" href="/view/index_beta.html" target="_blank" rel="noopener">Report (beta)</a>
+   <a class="b" href="/view/players_beta.html" target="_blank" rel="noopener">Player lookup (beta)</a>
+   <a class="b" href="/view/units_beta.html" target="_blank" rel="noopener">Companies &amp; squads (beta)</a>
+   <a class="b" href="/view/raids_beta.html" target="_blank" rel="noopener">Raids (beta)</a></div></div>
+ <div class="card"><h3>Website</h3>
+  <p class="small muted" id="pubInfo"></p>
+  <div class="row"><button class="b" id="publish">Publish online</button>
+   <a class="b" id="pubLink" href="#" target="_blank" rel="noopener" hidden>Open public page</a>
+   <button class="b" id="copyIndex">Copy index.html contents</button></div></div>
+ <div class="card"><h3>Discord message</h3>
+  <div class="row" style="margin-bottom:8px"><button class="b" id="copyDiscord">Copy</button><span class="small muted">Long posts are split: paste one part per message.</span></div>
+  <textarea id="discord" readonly></textarea></div>
+</section>
+
+<!-- SETTINGS -->
+<section class="tab" id="t-settings">
+ <div class="card"><h3>Google Drive folder</h3>
+  <p class="small muted">The <b>505th To_Process</b> folder synced by Google Drive for desktop, e.g. <code>H:\My Drive\505th To_Process</code>.
+  Screenshots and form_answers.csv are read from it on every run. Leave empty to stop using it.</p>
+  <div class="row"><input type="text" id="drivePath" style="max-width:480px"><button class="b" id="driveSave">Save</button>
+   <span class="small" id="driveMsg"></span></div></div>
+ <div class="card"><h3>Player order</h3>
+  <label class="chk"><input type="checkbox" id="trustOrder"> <span>Hosts type the callsigns in the form <b>in the order the players
+  appear on the stat screen, left to right</b>. A full squad is then named by position without asking (in-game
+  names that are recognised still win). Untick to be asked whenever a name isn't recognised.</span></label></div>
+ <div class="card"><h3>Open in Windows</h3>
+  <div class="row">
+   <button class="b" data-open="folder">Program folder</button><button class="b" data-open="to_process">To_Process</button>
+   <button class="b" data-open="drive">Drive folder</button><button class="b" data-open="htmlreport">htmlReport</button>
+   <button class="b" data-open="corrections">corrections.csv</button><button class="b" data-open="players">players.csv</button>
+   <button class="b" data-open="history">deployments.csv</button><button class="b" data-open="archive">Archive</button></div></div>
+ <div class="card"><h3>Reset</h3>
+  <p class="small muted">Always clears: screenshots in To_Process, the output folder, the website copy.
+  Kept unless ticked: the history, corrections.csv, players.csv. The Google Drive folder is never touched.</p>
+  <label class="chk"><input type="checkbox" id="rForms"> Also clear the form file(s) next to the program</label>
+  <label class="chk"><input type="checkbox" id="rHist"> Also clear the history, corrections.csv and raids.csv (start again from zero)</label>
+  <label class="chk"><input type="checkbox" id="rPlayers"> Also forget who is who (players.csv)</label>
+  <div class="row" style="margin-top:8px"><button class="b" id="rArchive">Archive (recommended)</button>
+   <button class="b danger" id="rDelete">Delete permanently</button><span class="small" id="rMsg"></span></div></div>
+</section>
+<footer>Runs on this PC only (127.0.0.1). Close the console window to stop the panel.</footer>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const $ = s => document.querySelector(s);
+const H = {'Content-Type':'application/json','X-505':'1'};
+async function api(path, body){
+  const r = await fetch(path, body===undefined ? {} : {method:'POST', headers:H, body:JSON.stringify(body)});
+  const j = await r.json().catch(()=>({error:'Panel not reachable - is the console window still open?'}));
+  if(!r.ok || j.error) throw new Error(j.error || r.statusText);
+  return j;
+}
+function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+function toast(msg, bad){ const t=$('#toast'); t.textContent=msg; t.style.borderLeftColor=bad?'var(--err)':'var(--accent)';
+  t.style.display='block'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.display='none', 5000); }
+async function guard(fn){ try{ await fn(); }catch(e){ toast(e.message, true); } }
+
+// tabs
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on', x===b));
+  document.querySelectorAll('section.tab').forEach(s=>s.classList.toggle('on', s.id==='t-'+b.dataset.t));
+  ({check:loadCorr, players:loadPlayers, history:loadHistory, raids:loadRaids, share:loadShare, settings:loadSettings})[b.dataset.t]?.();
+});
+
+// status
+let ST = {};
+async function refresh(){
+  try{ ST = await api('/api/status'); }catch(e){ $('#busy').textContent='Panel stopped'; return; }
+  const tiles = [
+    ['Screenshots', String(ST.shots_local + ST.shots_drive), ST.drive_ok ? `${ST.shots_drive} in Drive · ${ST.shots_local} in To_Process` : `${ST.shots_local} in To_Process · Drive folder not set`],
+    ['Form answers', ST.form ? '✓' : '—', ST.form || 'none: dates / fronts will be missing', !ST.form],
+    ['History', String(ST.history), 'deployments counted'],
+    ['To check', String(ST.to_check), ST.to_check ? 'open the Check tab' : 'nothing left to check', ST.to_check>0],
+    ['Last report', ST.last_report, ST.published ? 'published' : ''],
+  ];
+  const box = $('#tiles'); box.innerHTML='';
+  tiles.forEach(([a,b,c,alert])=>{ const t=el('div','tile'+(alert?' alert':'')); t.appendChild(el('div','tl',a));
+    t.appendChild(el('div','tv',b)); t.appendChild(el('div','ts',c)); box.appendChild(t); });
+  const bd=$('#badge'); bd.hidden=!ST.to_check; bd.textContent=ST.to_check;
+  $('#busy').textContent = ST.running ? ST.running + '…' : 'Ready';
+  $('#run').disabled = !!ST.running; $('#runPub').disabled = !!ST.running;
+}
+// log
+let logNext = 0, wasRunning = false;
+async function pollLog(){
+  try{
+    const j = await api('/api/log?since='+logNext);
+    const box = $('#log'); const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+    j.lines.forEach(([text, tag]) => box.appendChild(el('span', tag||null, text)));
+    logNext = j.next; if(atEnd) box.scrollTop = box.scrollHeight;
+    if(wasRunning && !j.running){ refresh(); if($('#t-check').classList.contains('on')) loadCorr(); }
+    wasRunning = !!j.running;
+  }catch(e){}
+  setTimeout(pollLog, wasRunning ? 600 : 2000);
+}
+async function startRun(publish){ const j=await api('/api/run',{force:$('#force').checked, publish});
+  if(j.busy) toast('Busy - wait for the current job.', true); wasRunning=true; refresh(); }
+$('#run').onclick = () => guard(()=>startRun(false));
+$('#runPub').onclick = () => guard(()=>startRun(true));
+
+// drop zone (whole page accepts drops)
+const drop = $('#drop');
+drop.onclick = () => $('#pick').click();
+$('#pick').onchange = e => upload([...e.target.files], 'files');
+['dragenter','dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if(ev==='drop'||!e.relatedTarget) drop.classList.remove('over'); }));
+document.addEventListener('drop', e => { if(e.dataTransfer.files.length) upload([...e.dataTransfer.files], 'files'); });
+async function upload(files, kind){
+  if(!files.length) return;
+  const batch = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const log = $('#log');
+  for(const f of files){
+    log.appendChild(el('span',null,`Uploading ${f.name} (${(f.size/1048576).toFixed(1)} MB)…\n`)); log.scrollTop=log.scrollHeight;
+    const r = await fetch('/api/upload', {method:'POST', headers:{'X-505':'1','X-Batch':batch,'X-Name':encodeURIComponent(f.name)}, body:f});
+    if(!r.ok){ toast('Upload failed: '+f.name, true); return; }
+  }
+  await guard(async()=>{ const j = await api('/api/import', {batch, kind}); if(j.busy) toast('Busy - try again in a moment.', true);
+    wasRunning = true; document.querySelector('#tabs button[data-t=process]').click(); });
+}
+
+// corrections
+let CORR = [];
+async function loadCorr(){ await guard(async()=>{ CORR = (await api('/api/corrections')).rows; drawCorr(); }); }
+function drawCorr(){
+  const body = $('#corrBody'); body.innerHTML='';
+  const showDone = $('#showDone').checked;
+  const rows = CORR.map((r,i)=>[r,i]).filter(([r])=> showDone || !String(r.correct_value||'').trim());
+  if(!rows.length){ const tr=el('tr'); const td=el('td','muted', CORR.length ? 'Nothing left to check.' : 'No corrections yet - run the report.'); td.colSpan=6; tr.appendChild(td); body.appendChild(tr); return; }
+  rows.forEach(([r,i])=>{
+    const tr = el('tr', String(r.correct_value||'').trim() ? 'done' : null);
+    const short = r.file.length>38 ? r.file.slice(0,36)+'…' : r.file;
+    const c0 = el('td','small',short); c0.title = r.file; tr.appendChild(c0);
+    tr.appendChild(el('td','num',r.slot)); tr.appendChild(el('td',null,r.player));
+    tr.appendChild(el('td',null,r.stat)); tr.appendChild(el('td','num',r.value_read));
+    const td = el('td'); const inp = el('input'); inp.type='text'; inp.value = r.correct_value||''; inp.dataset.i=i;
+    inp.placeholder = r.stat==='player' ? 'ok / callsign' : 'number / ok';
+    inp.oninput = () => { CORR[i].correct_value = inp.value; };
+    inp.onkeydown = e => { if(e.key==='Enter'){ const all=[...body.querySelectorAll('input')]; const n=all[all.indexOf(inp)+1]; if(n){ n.focus(); n.closest('tr').click(); } } };
+    td.appendChild(inp); tr.appendChild(td);
+    tr.onclick = () => { body.querySelectorAll('tr').forEach(x=>x.classList.remove('sel')); tr.classList.add('sel'); preview(r); };
+    body.appendChild(tr);
+  });
+}
+function preview(r){
+  const p = $('#preview'); p.innerHTML='';
+  p.appendChild(el('div','small muted', r.file));
+  const sb = el('div','slotbar'); for(let s=0;s<4;s++){ const d=el('div', String(s)===String(r.slot)?'on':null, 'slot '+s); sb.appendChild(d); } p.appendChild(sb);
+  const info = el('div','small'); info.appendChild(el('b',null, `${r.player} · ${r.stat}`)); info.appendChild(document.createTextNode(` · read ${r.value_read}`)); p.appendChild(info);
+  if(r.readings) p.appendChild(el('div','small muted', r.readings));
+  const src = '/api/shot?f=' + encodeURIComponent(r.file);
+  const a = el('a'); a.href = src; a.target = '_blank'; a.rel = 'noopener'; a.title = 'Open full size';
+  const img = el('img'); img.alt = r.file; img.src = src;
+  img.onerror = () => { a.replaceWith(el('p','muted','Screenshot not found in To_Process or the Drive folder.')); };
+  a.appendChild(img); p.appendChild(a);
+  p.appendChild(el('div','small muted','Click the picture to open it full size. Slot 0 = leftmost player.'));
+}
+$('#showDone').onchange = drawCorr;
+async function saveCorr(){
+  const answers = CORR.map(r=>({file:r.file, slot:String(r.slot).split('.')[0], stat:r.stat, correct_value:r.correct_value||''}));
+  const j = await api('/api/corrections', {answers}); $('#corrMsg').textContent = `Saved (${j.changed} changed).`; refresh();
+}
+$('#saveCorr').onclick = () => guard(saveCorr);
+$('#saveRun').onclick = () => guard(async()=>{ await saveCorr(); await api('/api/run',{force:false, publish:true}); wasRunning=true;
+  document.querySelector('#tabs button[data-t=process]').click(); });
+
+// players
+let PL = [];
+async function loadPlayers(){ await guard(async()=>{ PL = (await api('/api/players')).rows.map(r=>({callsign:r.callsign||'', also_known_as:r.also_known_as||''})); drawPlayers(); }); }
+function drawPlayers(){
+  const f = $('#plFilter').value.toLowerCase(); const body=$('#plBody'); body.innerHTML='';
+  PL.forEach((r,i)=>{
+    if(f && !(r.callsign+' '+r.also_known_as).toLowerCase().includes(f)) return;
+    const tr=el('tr');
+    for(const k of ['callsign','also_known_as']){ const td=el('td'); const inp=el('input'); inp.type='text'; inp.value=r[k];
+      inp.oninput=()=>{ PL[i][k]=inp.value; }; td.appendChild(inp); tr.appendChild(td); }
+    const td=el('td'); const x=el('button','b','✕'); x.title='Remove this callsign'; x.onclick=()=>{ PL.splice(i,1); drawPlayers(); }; td.appendChild(x); tr.appendChild(td);
+    body.appendChild(tr);
+  });
+}
+$('#plFilter').oninput = drawPlayers;
+$('#plAdd').onclick = () => { PL.unshift({callsign:'', also_known_as:''}); $('#plFilter').value=''; drawPlayers(); $('#plBody input')?.focus(); };
+$('#plSave').onclick = () => guard(async()=>{ const j=await api('/api/players',{rows:PL}); $('#plMsg').textContent=`Saved ${j.saved} callsigns. Run report to apply.`; });
+
+// history
+async function loadHistory(){ await guard(async()=>{
+  const rows=(await api('/api/history')).rows; const body=$('#histBody'); body.innerHTML='';
+  if(!rows.length){ const tr=el('tr'); const td=el('td','muted','The history is empty - it fills on every Run report.'); td.colSpan=10; tr.appendChild(td); body.appendChild(tr); return; }
+  rows.slice().reverse().forEach(r=>{
+    const tr=el('tr'); const td=el('td'); const cb=el('input'); cb.type='checkbox'; cb.checked=(r.keep||'yes').toLowerCase()!=='no';
+    cb.onchange=()=>guard(async()=>{ await api('/api/history/keep',{uid:r.uid, keep:cb.checked}); $('#histMsg').textContent='Saved - applies at the next Run report.'; });
+    td.appendChild(cb); tr.appendChild(td);
+    [String(r.date||'').slice(0,16), r.operation, r.planet, r.front, r.difficulty, r.missions, r.players].forEach(v=>tr.appendChild(el('td',null,v||'')));
+    tr.appendChild(el('td','num',r.kills)); tr.appendChild(el('td','num',r.deaths)); body.appendChild(tr);
+  }); }); }
+$('#histFile').onchange = e => upload([...e.target.files], 'history');
+
+// raids (beta)
+let RD = null, RDcur = null, RDcand = [], RDdirty = false;
+['#rdUnit','#rdPlanet','#rdStart','#rdEnd'].forEach(id=>$(id).addEventListener('change',()=>{ RDdirty=true; }));
+function paris(utc){ if(!utc) return ''; try{ return new Date(utc+':00Z').toLocaleString('en-GB',{timeZone:'Europe/Paris',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Paris'; }catch(e){ return ''; } }
+function fillSel(sel, opts, val){ sel.innerHTML=''; opts.forEach(([v,l])=>{ const o=el('option',null,l); o.value=v; sel.appendChild(o); }); sel.value=val; if(sel.value!==val && opts.length) sel.selectedIndex=0; }
+async function loadRaids(){ await guard(async()=>{
+  RD = await api('/api/raids'); const body=$('#rdList'); body.innerHTML='';
+  if(!RD.raids.length){ const tr=el('tr'); const td=el('td','muted', RD.has_history ? 'No raid yet - click + New raid.' : 'The history is empty - run the report first.'); td.colSpan=6; tr.appendChild(td); body.appendChild(tr); }
+  RD.raids.forEach(r=>{ const tr=el('tr'); [r.start_local, r.name, r.label, r.planet||'any'].forEach(v=>tr.appendChild(el('td',null,v)));
+    tr.appendChild(el('td','num',String(r.squads))); const td=el('td'); const b=el('button','b','Edit'); b.onclick=()=>editRaid(r); td.appendChild(b); tr.appendChild(td); body.appendChild(tr); });
+  const tb=$('#rdTagged'); tb.innerHTML=''; $('#rdTagCard').hidden=!RD.untagged.length;
+  RD.untagged.forEach(u=>{ const tr=el('tr'); [u.date,u.op,u.team,u.planet].forEach(v=>tr.appendChild(el('td',null,v)));
+    const td=el('td'); const b=el('button','b','Create raid'); b.onclick=()=>{ const end=new Date(new Date(u.date_utc+':00Z').getTime()+3*3600e3).toISOString().slice(0,16);
+      editRaid({name:'', level:'regiment', unit:'', planet:u.planet, start_utc:u.date_utc, end_utc:end, include:'', exclude:''}); };
+    td.appendChild(b); tr.appendChild(td); tb.appendChild(tr); });
+}); }
+function editRaid(r){
+  RDcur = r || {id:'', name:'', level:'regiment', unit:'', planet:'', start_utc:'', end_utc:'', include:'', exclude:'', notes:''};
+  $('#rdEdit').hidden=false; $('#rdTitle').textContent = RDcur.id ? 'Edit raid' : 'New raid'; $('#rdDel').hidden=!RDcur.id;
+  $('#rdName').value=RDcur.name||''; $('#rdNotes').value=RDcur.notes||'';
+  fillSel($('#rdUnit'), RD.units.map(o=>[o.value,o.label]), RDcur.level+'|'+(RDcur.unit||''));
+  fillSel($('#rdPlanet'), [['','Any planet']].concat(RD.planets.map(p=>[p,p])), RDcur.planet||'');
+  $('#rdStart').value=RDcur.start_utc||''; $('#rdEnd').value=RDcur.end_utc||''; showParis();
+  $('#rdCand').innerHTML=''; RDcand=[]; $('#rdMsg').textContent='';
+  if(RDcur.start_utc && RDcur.end_utc) findRaid();
+  $('#rdEdit').scrollIntoView({behavior:'smooth', block:'start'});
+}
+function showParis(){ $('#rdStartL').textContent=paris($('#rdStart').value); $('#rdEndL').textContent=paris($('#rdEnd').value); }
+$('#rdStart').oninput = () => { if(!$('#rdEnd').value && $('#rdStart').value){ $('#rdEnd').value=new Date(new Date($('#rdStart').value+':00Z').getTime()+3*3600e3).toISOString().slice(0,16); } showParis(); };
+$('#rdEnd').oninput = showParis;
+function formRaid(){ const [level, unit] = $('#rdUnit').value.split('|');
+  return {id:RDcur.id, name:$('#rdName').value, level, unit, planet:$('#rdPlanet').value, start_utc:$('#rdStart').value, end_utc:$('#rdEnd').value,
+          notes:$('#rdNotes').value, include:RDcur.include||'', exclude:RDcur.exclude||''}; }
+async function findRaid(){ await guard(async()=>{
+  const j = await api('/api/raids/preview', {raid:formRaid()}); RDcand=j.candidates; RDdirty=false; const body=$('#rdCand'); body.innerHTML='';
+  if(!RDcand.length){ const tr=el('tr'); const td=el('td','muted','No deployment in this time window.'); td.colSpan=6; tr.appendChild(td); body.appendChild(tr); }
+  RDcand.forEach(c=>{ const tr=el('tr'); const td=el('td'); const cb=el('input'); cb.type='checkbox'; cb.checked=c.ticked; cb.onchange=()=>{ c.ticked=cb.checked; count(); };
+    td.appendChild(cb); tr.appendChild(td); [c.date,c.op,c.team,c.planet].forEach(v=>tr.appendChild(el('td',null,v)));
+    const n=el('td','small muted'); if(c.tagged){ n.appendChild(el('span','tag','FORM: RAID')); } n.appendChild(document.createTextNode(c.why)); tr.appendChild(n); body.appendChild(tr); });
+  count(); }); }
+function count(){ $('#rdMsg').textContent = RDcand.filter(c=>c.ticked).length+' of '+RDcand.length+' deployment(s) ticked'; }
+$('#rdFind').onclick = findRaid;
+$('#rdNew').onclick = () => editRaid(null);
+$('#rdCancel').onclick = () => { $('#rdEdit').hidden=true; };
+$('#rdSave').onclick = () => guard(async()=>{ if(RDdirty || !RDcand.length){ await findRaid(); if(RDcand.length){ toast('Deployments updated for the new settings - check the list, then Save again.'); return; } }
+  const j = await api('/api/raids/save', {raid:formRaid(), ticked:RDcand.filter(c=>c.ticked).map(c=>c.uid)});
+  toast('Raid saved - Run report to update the beta pages.'); $('#rdEdit').hidden=true; loadRaids(); });
+$('#rdDel').onclick = () => guard(async()=>{ if(!confirm('Delete the raid "'+RDcur.name+'"? (the deployments stay in the history)')) return;
+  await api('/api/raids/delete', {id:RDcur.id}); $('#rdEdit').hidden=true; loadRaids(); });
+
+// share
+async function loadShare(){ await guard(async()=>{
+  $('#discord').value = (await api('/api/discord')).text || 'No Discord message yet - run the report.';
+  const a=$('#pubLink'); a.hidden=!ST.published; a.href=ST.published||'#';
+  $('#pubInfo').textContent = ST.published ? 'Published at '+ST.published : 'Not published yet: Publish online opens a window that uploads index.html, players.html and units.html to Cloudflare Pages.';
+}); }
+async function copyText(t){ try{ await navigator.clipboard.writeText(t); toast('Copied to the clipboard.'); }catch(e){ toast('Copy failed - select the text and press Ctrl+C.', true); } }
+$('#copyDiscord').onclick = () => copyText($('#discord').value);
+$('#copyIndex').onclick = () => guard(async()=>{ const t=(await api('/api/index_html')).text; if(!t) throw new Error('No report yet.'); await copyText(t); });
+$('#publish').onclick = () => guard(async()=>{ await api('/api/publish',{}); toast('Publishing in a separate window.'); });
+
+// settings
+$('#trustOrder').onchange = e => guard(async()=>{ await api('/api/settings',{trust_form_order:e.target.checked}); toast('Saved - applies at the next Run report.'); refresh(); });
+function loadSettings(){ $('#trustOrder').checked = ST.trust_form_order !== false; $('#drivePath').value = ST.drive_setting || ''; $('#driveMsg').textContent = ST.drive_ok ? `✓ found - ${ST.shots_drive} screenshots` : (ST.drive_setting ? 'folder not found' : ''); $('#driveMsg').className='small '+(ST.drive_ok?'ok':'err'); }
+$('#driveSave').onclick = () => guard(async()=>{ await api('/api/settings',{drive_folder:$('#drivePath').value}); await refresh(); loadSettings(); toast('Saved.'); });
+document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => guard(()=>api('/api/open',{what:b.dataset.open})));
+async function reset(action){
+  const opts = {forms:$('#rForms').checked, history:$('#rHist').checked, players:$('#rPlayers').checked};
+  const what = ['To_Process, output and the website copy'].concat(opts.forms?['the form file(s)']:[], opts.history?['the history, corrections.csv and raids.csv']:[], opts.players?['players.csv']:[]).join(', ');
+  if(!confirm((action==='delete' ? 'PERMANENTLY DELETE: ' : 'Archive (move to Archive\\reset_<date>): ') + what + '?')) return;
+  const j = await api('/api/reset', Object.assign({action}, opts)); $('#rMsg').textContent = j.message; refresh();
+}
+$('#rArchive').onclick = () => guard(()=>reset('archive'));
+$('#rDelete').onclick = () => guard(()=>reset('delete'));
+
+refresh(); setInterval(refresh, 4000); pollLog();
+</script>
+</body></html>
