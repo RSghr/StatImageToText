@@ -1,10 +1,27 @@
+# Python / tools
+.venv/
+__pycache__/
+*.pyc
+.wrangler/
+.uploads/
 
-/PyProject/All_Operation_Output
-PyProject/Graphs/AvgCasualty.png
-PyProject/Graphs/AvgKills.png
-PyProject/Graphs/CummKill.png
-PyProject/Graphs/DiffPie.png
-PyProject/Graphs/kdRATIO.png
-PyProject/Graphs/KDbarration.png
-PyProject/Graphs/EnemyPie.png
-PyProject/Graphs/CummDeath.png
+# made by the program
+output/
+history/
+Archive/
+htmlReport/*
+!htmlReport/.gitkeep
+To_Process/*
+!To_Process/PUT_SCREENSHOTS_HERE.txt
+
+# local settings and server data (never shared)
+settings.json
+players.csv
+corrections.csv
+raids.csv
+roster_raw.csv
+form_answers.csv
+*.xlsx
+published_address.txt
+publish_config.txt
+google_apps_script/Planets.txt
