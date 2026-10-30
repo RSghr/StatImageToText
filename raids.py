@@ -246,6 +246,13 @@ def build(df: pd.DataFrame, dep: pd.DataFrame, units, now: datetime | None = Non
     rows = dep_rows(df, dep)
     out = [r for r in (raid_data(rd, df, rows, units) for rd in load()) if r]
     out.sort(key=lambda r: r["ts"], reverse=True)
+    try:
+        import unit_colors
+        cols = unit_colors.current()
+    except Exception:  # noqa: BLE001
+        cols = {}
+    for r in out:
+        r["color"] = cols.get(r["unit"].partition(" / ")[0], "") if r["level"] != "regiment" else ""
     # records against earlier raids of the same level
     for r in out:
         same = [x for x in out if x["level"] == r["level"] and x["ts"] < r["ts"]]
@@ -299,7 +306,9 @@ document.getElementById('intro').textContent = D.raids.length
 const root = document.getElementById('root');
 D.raids.forEach(r=>{
   const s = el('section','raid'); s.id = 'raid-'+r.id;
-  const h = el('div','rh'); h.append(el('span','rlab', r.label), el('h3',null,r.name)); s.append(h);
+  const h = el('div','rh'); const lab=el('span','rlab', r.label);
+  if(r.color){ lab.style.background=r.color; lab.style.color='#fff'; s.style.borderTop='4px solid '+r.color; s.style.paddingTop='12px'; }
+  h.append(lab, el('h3',null,r.name)); s.append(h);
   s.append(el('div','rmeta', [r.start+(r.end?' - '+r.end:''), r.planet, r.notes].filter(Boolean).join(' · ')));
   if(r.badges.length){ const b=el('div','badges'); r.badges.forEach(x=>b.append(el('span',null,'★ '+x))); s.append(b); }
   const t = el('div','tiles6');

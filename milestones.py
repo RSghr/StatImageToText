@@ -11,6 +11,7 @@ Reported numbers only (sending stats is optional): totals are "logged" totals.
 from __future__ import annotations
 
 import csv
+import io
 import html
 import json
 import re
@@ -35,10 +36,37 @@ DEFAULT_TITLES = {"kills": "{n} {faction} kills", "operations": "{n} {faction} o
 
 
 # ---------------------------------------------------------------- targets
+def read_text(path: Path) -> str:
+    raw = path.read_bytes()
+    for enc in ("utf-8-sig", "cp1252"):              # Excel may save in the Windows encoding
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", "replace")
+
+
+def unmangle(line: str) -> str:
+    """Excel set to French (or any ';' list separator) splits '10000;25000;...' into cells and saves them back
+    with ',' and quotes: '"regiment,kills,,10000",25000,...,"10000000,{n} killed",,'. Put the line back together."""
+    try:
+        cells = next(csv.reader([line]))
+    except (csv.Error, StopIteration):
+        return line
+    if len(cells) >= 1 and ("," in cells[0] or cells[0].lstrip().startswith("#")) and line.lstrip().startswith('"'):
+        return ";".join(cells).rstrip(";")
+    if "," not in line and line.count(";") >= 3 and not line.lstrip().startswith("#"):   # saved with ';' separators
+        p = [x.strip().strip('"') for x in line.split(";")]
+        out = io.StringIO()
+        csv.writer(out).writerow(p[:3] + [";".join(x for x in p[3:-1] if x), p[-1]])
+        return out.getvalue().strip()
+    return line
+
+
 def load_spec(path: Path = SPEC) -> list[dict]:
     if not path.exists():
         return []
-    lines = [l for l in path.read_text(encoding="utf-8-sig").splitlines() if l.strip() and not l.lstrip().startswith("#")]
+    lines = [l for l in (unmangle(l) for l in read_text(path).splitlines()) if l.strip() and not l.lstrip().startswith("#")]
     tracks = []
     for r in csv.DictReader(lines):
         r = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items()}
@@ -240,6 +268,11 @@ def compute(df: pd.DataFrame, dep: pd.DataFrame, now: datetime | None = None) ->
     cut = (now - timedelta(days=RECENT_DAYS)).isoformat()
     out["recent"] = [e for e in out["events"] if e["ts"] and e["ts"] >= cut]
     out["close"].sort(key=lambda c: -c["pct"])
+    try:
+        import unit_colors
+        out["colors"] = unit_colors.current()
+    except Exception:  # noqa: BLE001
+        out["colors"] = {}
     return out
 
 
@@ -247,28 +280,33 @@ def compute(df: pd.DataFrame, dep: pd.DataFrame, now: datetime | None = None) ->
 TROPHY = ('<svg viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4"/>'
           '<path d="M16 6h3a3 3 0 0 1-3 4"/><path d="M12 13v4"/><path d="M8.5 20h7"/><path d="M10 17h4v3h-4z"/></svg>')
 CSS = """<style>
-.ms-new{border:2px solid var(--accent)!important;background:linear-gradient(135deg,var(--surface) 60%,color-mix(in srgb,var(--accent) 14%,var(--surface)))!important}
-.ms-tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;background:var(--accent);color:var(--accent-ink);padding:2px 7px;margin-bottom:4px}
-.ms-own{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
-#msCards>[hidden]{display:none!important}
-.ms-close{margin-top:12px}
-.ms-row{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:9px 0;border-bottom:1px solid var(--grid)}
-.ms-row:last-child{border-bottom:0}
-.ms-row .v{color:var(--text2);font-variant-numeric:tabular-nums;text-align:right}
-.ms-row .bar{grid-column:1/-1;height:6px;background:var(--surface2)}.ms-row .bar i{display:block;height:100%;background:var(--accent)}
+{{CCVARS}}
+.ms .hl{border-left:4px solid var(--ccl)}
+.ms .hi svg{stroke:var(--ccl)}
+.ms-new{border:2px solid var(--ccl)!important;border-left-width:6px!important;
+ background:linear-gradient(135deg,var(--surface) 60%,color-mix(in srgb,var(--ccl) 16%,var(--surface)))!important}
+.ms-tag{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;background:var(--cc);color:#fff;padding:2px 7px;margin-bottom:4px}
+.ms-reg .ms-tag{color:var(--accent-ink)}
+.ms-own{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px}
+.ms-own::before{content:"";width:10px;height:10px;background:var(--ccl);display:inline-block;flex:none}
+.ms-fit>[hidden]{display:none!important}
+.ms-close{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:10px}
+.ms-ct{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--ccl);padding:10px 12px}
+.ms-ct .t{font-weight:700;margin:2px 0 6px}
+.ms-ct .v{color:var(--text2);font-variant-numeric:tabular-nums;font-size:13px}
+.ms-ct .bar{height:6px;background:var(--surface2);margin-top:4px}.ms-ct .bar i{display:block;height:100%;background:var(--ccl)}
 table.mlog td:nth-child(5){white-space:normal;min-width:200px}
+.sw2{display:inline-block;width:10px;height:10px;background:var(--ccl);margin-right:7px}
 </style>"""
-
-
 FIT_JS = """<script>
-(function(){ // at most 2 rows of milestone cards, whatever the screen width
-  const box=document.getElementById('msCards'), more=document.getElementById('msMore'); if(!box) return;
-  function fit(){ const cards=[...box.children]; cards.forEach(c=>c.hidden=false);
+(function(){ // at most 2 rows of cards, whatever the screen width
+  function fit(box){ const more=document.getElementById(box.dataset.more); const cards=[...box.children]; cards.forEach(c=>c.hidden=false);
     const tops=[...new Set(cards.map(c=>c.offsetTop))].sort((a,b)=>a-b); let hid=0;
     if(tops.length>2){ cards.forEach(c=>{ if(c.offsetTop>tops[1]){ c.hidden=true; hid++; } }); }
     const rest=Number(more.dataset.total)-cards.length+hid;
-    more.hidden=rest<=0; more.textContent=rest>0 ? '+'+rest+' more in the milestone log below' : ''; }
-  fit(); let t; addEventListener('resize',()=>{ clearTimeout(t); t=setTimeout(fit,100); });
+    more.hidden=rest<=0; more.textContent=rest>0 ? '+'+rest+' '+more.dataset.what : ''; }
+  const all=()=>document.querySelectorAll('.ms-fit').forEach(fit);
+  all(); let t; addEventListener('resize',()=>{ clearTimeout(t); t=setTimeout(all,100); });
 })();
 </script>"""
 
@@ -277,42 +315,58 @@ def _esc(s) -> str:
     return html.escape(str(s or ""))
 
 
-def _card(e, new=False) -> str:
-    return (f'<div class="hl{" ms-new" if new else ""}"><div class="hi">{TROPHY}</div><div class="hb">'
+def _cc(ms: dict, owner: str, extra: str = "") -> str:
+    """class + style attributes giving the owner's colour (regiment = the site's yellow)."""
+    col = ms.get("colors", {}).get(owner)
+    return f'class="{extra} cc{"" if col else " ms-reg"}" style="--cc:{col or "var(--accent)"}"'
+
+
+def _card(ms, e, new=False) -> str:
+    return (f'<div {_cc(ms, e["owner"], "hl ms-new" if new else "hl")}><div class="hi">{TROPHY}</div><div class="hb">'
             + ('<div class="ms-tag">Milestone reached!</div>' if new else "")
             + f'<div class="ms-own">{_esc(e["owner"])}</div><div class="ht">{_esc(e["title"])}</div>'
             f'<div class="hw">{_esc(e["where"])}{" · " + _esc(e["date"]) if e["date"] else ""}</div>'
             f'<div class="hp">{_esc(e["team"])}</div></div></div>')
 
 
-def report_section(ms: dict) -> str:
+def cards_section(ms: dict) -> str:
     recent = ms["recent"]
-    shown = (recent or ms["events"])[:16]          # the page then keeps at most 2 rows (see FIT_JS)
-    parts = ['<h2>Milestones</h2>']
+    shown = (recent or ms["events"])[:16]          # the page then keeps at most 2 rows (FIT_JS)
+    parts = ['<section class="ms"><h2>Milestones</h2>']
     if shown:
         parts.append(f'<div class="sub muted" style="margin:-4px 0 10px">'
                      f'{"Reached in the last " + str(RECENT_DAYS) + " days" if recent else "Latest milestones reached"}'
                      ' · the whole team gets the credit</div>')
-        parts.append('<div class="hls" id="msCards">' + "".join(_card(e, bool(recent)) for e in shown) + '</div>')
+        parts.append('<div class="hls ms-fit" data-more="msMore">' + "".join(_card(ms, e, bool(recent)) for e in shown)
+                     + '</div>')
         total = len(recent) if recent else len(ms["events"])
-        parts.append(f'<p class="muted small" id="msMore" data-total="{total}" hidden></p>' + FIT_JS)
+        parts.append(f'<p class="muted small" id="msMore" data-total="{total}" '
+                     'data-what="more in the milestone log below" hidden></p>')
     else:
         parts.append('<p class="muted">No milestone reached yet.</p>')
-    close = ms["close"][:8]
-    if close:
-        rows = "".join(f'<div class="ms-row"><div><span class="ms-own">{_esc(c["owner"])}</span> · {_esc(c["title"])}</div>'
-                       f'<div class="v">{c["value"]:,} / {c["target"]:,}</div>'
-                       f'<div class="bar"><i style="width:{min(100, c["pct"])}%"></i></div></div>' for c in close)
-        parts.append(f'<div class="card ms-close"><h3>Almost there</h3><div class="sub">At least {int(CLOSE * 100)}% '
-                     f'of the way to the next milestone</div>{rows}</div>')
-    return "\n".join(parts) + "\n"
+    return "".join(parts) + "</section>\n"
+
+
+def close_section(ms: dict) -> str:
+    close = ms["close"][:16]
+    if not close:
+        return ""
+    tiles = "".join(f'<div {_cc(ms, c["owner"], "ms-ct")}><div class="ms-own">{_esc(c["owner"])}</div>'
+                    f'<div class="t">{_esc(c["title"])}</div><div class="v">{c["value"]:,} / {c["target"]:,} '
+                    f'({c["pct"]}%)</div><div class="bar"><i style="width:{min(100, c["pct"])}%"></i></div></div>'
+                    for c in close)
+    return (f'<h2>Almost there</h2><div class="sub muted" style="margin:-4px 0 10px">At least {int(CLOSE * 100)}% of '
+            'the way to the next milestone</div>'
+            f'<div class="ms-close ms-fit" data-more="msCloseMore">{tiles}</div>'
+            f'<p class="muted small" id="msCloseMore" data-total="{len(ms["close"])}" data-what="more on the way" hidden></p>\n')
 
 
 def log_section(ms: dict) -> str:
     ev = ms["events"]
     if not ev:
         return ""
-    rows = "".join(f'<tr><td>{_esc(e["date"])}</td><td>{_esc(e["title"])}</td><td>{_esc(e["owner"])}</td>'
+    rows = "".join(f'<tr><td>{_esc(e["date"])}</td><td>{_esc(e["title"])}</td>'
+                   f'<td {_cc(ms, e["owner"])}><span class="sw2"></span>{_esc(e["owner"])}</td>'
                    f'<td>{_esc(e["where"])}</td><td>{_esc(e["team"])}</td></tr>' for e in ev)
     return ('<h2>Milestone log</h2><details><summary>' + f'{len(ev)} milestones reached · most recent first</summary>'
             '<div class="tw"><table class="mlog"><thead><tr><th>Date</th><th>Milestone</th><th>Who</th>'
@@ -320,13 +374,16 @@ def log_section(ms: dict) -> str:
 
 
 def patch_report(page: str, ms: dict) -> str:
-    sec = report_section(ms)
-    page = page.replace("</head>", CSS + "</head>", 1)
-    if ms["recent"]:                                   # just reached: right at the top, before the totals
-        page = page.replace('<main class="wrap">', '<main class="wrap">\n' + sec, 1)
-    else:                                              # otherwise: just above the highlights
-        page = page.replace("<h2>Highlights</h2>", sec + "<h2>Highlights</h2>", 1)
-    return page.replace("<h2>Deployment log</h2>", log_section(ms) + "<h2>Deployment log</h2>", 1)
+    import unit_colors
+    cards, close = cards_section(ms), close_section(ms)
+    page = page.replace("</head>", CSS.replace("{{CCVARS}}", unit_colors.CSS_VARS) + "</head>", 1)
+    if ms["recent"]:                    # just reached: right at the top; "almost there" stays above the highlights
+        page = page.replace('<main class="wrap">', '<main class="wrap">\n' + cards, 1)
+        page = page.replace("<h2>Highlights</h2>", close + "<h2>Highlights</h2>", 1)
+    else:                               # otherwise both just above the highlights
+        page = page.replace("<h2>Highlights</h2>", cards + close + "<h2>Highlights</h2>", 1)
+    page = page.replace("<h2>Deployment log</h2>", log_section(ms) + "<h2>Deployment log</h2>", 1)
+    return page.replace("</main>", FIT_JS + "</main>", 1)
 
 
 # ---------------------------------------------------------------- player cards

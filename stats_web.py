@@ -346,6 +346,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"bookmark": bookmark_url(self.server.server_address[1]),
                                    "fixed_port": self.server.server_address[1] == PORT,
                                    "autostart": bool(f and f.exists()), "windows": f is not None})
+            if url.path == "/api/colors":
+                return self._json({"companies": company_colors_list()})
             if url.path == "/api/raids":
                 import raids
                 return self._json(raids.panel_state())
@@ -389,6 +391,15 @@ class Handler(BaseHTTPRequestHandler):
                 ok = JOBS.start("Run & publish" if b.get("publish") else "Run report",
                                 lambda: fn(bool(b.get("force"))))
                 return self._json({"ok": ok, "busy": not ok})
+            if path == "/api/colors":
+                import unit_colors
+                cols = b.get("colors") or {}
+                bad = [k for k, v in cols.items() if v and not unit_colors.clean_hex(v)]
+                if bad:
+                    return self._err("Not a colour code: " + ", ".join(f"{k} = {cols[k]}" for k in bad)
+                                     + " (use 6 hex digits, e.g. #003478)")
+                unit_colors.save({k: v for k, v in cols.items() if v})
+                return self._json({"ok": True, "companies": company_colors_list()})
             if path == "/api/panel/autostart":
                 try:
                     return self._json({"ok": True, "autostart": set_autostart(bool(b.get("on")))})
@@ -573,6 +584,26 @@ def free_port(preferred: int = 8765) -> int:
             except OSError:
                 continue
     return 0
+
+
+def company_colors_list() -> list[dict]:
+    """Companies of the roster (sheet order) with their tab and colour, for Settings -> Company colours."""
+    import roster
+    import unit_colors
+    comps = []
+    raw = roster.find_raw([drive_folder() or ""])
+    if raw:
+        try:
+            members = roster.parse(raw)
+            comps = list(dict.fromkeys(m["company"] for m in members.values() if m["company"]))
+        except Exception:  # noqa: BLE001
+            comps = []
+    if not comps:
+        units = roster.Units()
+        comps = sorted({m["company"] for m in units.current() if m["company"]}, key=lambda c: roster.sheet_pos(c))
+    cols = unit_colors.company_colors(comps, roster.TABS)
+    saved = unit_colors.saved()
+    return [dict(name=c, tab=roster.TABS.get(c, ""), color=cols[c], saved=c in saved) for c in comps]
 
 
 def already_running(port: int) -> bool:

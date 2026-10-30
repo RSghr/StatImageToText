@@ -27,6 +27,7 @@ RANK_ORDER = ["CPT", "1LT", "2LT", "SGM", "1SG", "SSG", "SGT", "CPL", "SPC", "PF
 
 
 ORDER: dict = {}    # (company,), (company, platoon), (company, platoon, squad) -> position in the sheet
+TABS: dict = {}     # company -> name of its roster tab ("EU COMPANY 1")
 
 
 def sheet_pos(*unit) -> tuple:
@@ -78,6 +79,7 @@ def parse(raw_csv: Path) -> dict:
         if r.get("tab", "") not in tabs:
             tabs.append(r.get("tab", ""))
     ORDER.clear()
+    TABS.clear()
     for r in sorted(rows, key=lambda r: (tabs.index(r.get("tab", "")), int(r.get("row") or 0))):
         tab, fn, raw, unit = r.get("tab", ""), r.get("function", ""), r.get("callsign", ""), r.get("unit", "")
         title = r.get("company", "")
@@ -105,6 +107,7 @@ def parse(raw_csv: Path) -> dict:
                 order.append(sq)
             m.update(level="squad", platoon=pl, squad=sq,
                      detachment=f"Detachment {1 if order.index(sq) < 2 else 2}")
+        TABS.setdefault(m["company"], tab)
         for o in [(m["company"],), (m["company"], m["platoon"]), (m["company"], m["platoon"], m["squad"])]:
             ORDER.setdefault(o, len(ORDER))
         k = key(name)

@@ -72,6 +72,11 @@ from the moment you log in - the bookmark then always works. **Stop the panel** 
 `Stats Web UI.bat` while it already runs just opens it. The link holds the panel's key (`.panel_key`): it only works
 on this PC, but don't share it.
 
+### Company colours
+Each company has its own colour on the report (milestones), the companies page, player cards and raids; the regiment
+stays yellow. Change them in *Settings & reset -> Company colours* (type a hex code like `#003478`, Save, Run report).
+Saved in `settings.json`.
+
 ## Every deployment is kept: the history
 
 Each run adds its deployments to **`history/`**; the report and the player lookup are built from the **whole
@@ -152,7 +157,8 @@ Every run also writes `output/index_beta.html`, `players_beta.html` and `units_b
 pages with a red BETA banner, **never copied to htmlReport and never published** (browser panel: Share → Beta).
 Future changes are tried there first (hooks in `beta.py`), then moved into the normal pages once they look right.
 
-**Now in beta: milestones.** Targets are in `milestones.csv` (edit freely: level, stat, faction, steps, title).
+**Now in beta: milestones.** Targets are in `milestones.csv` (edit freely: level, stat, faction, steps, title). Best edited in Notepad; if Excel
+saves it with its own separators, the program puts the lines back together.
 Regiment and company milestones show on the report: "Milestone reached!" cards at the top for 7 days, otherwise
 the latest ones above the highlights, plus "Almost there" (80%+ of the next target) and a milestone log.
 Personal milestones are on the player card. Everything is worked out from the history on every run (real date,

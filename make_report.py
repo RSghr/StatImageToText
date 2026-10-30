@@ -370,11 +370,7 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
         notes.append(f'{h["flagged"]} player row(s) still have a value marked for review in HD2_stats.xlsx.')
     notes_html = "".join(f"<li>{html.escape(n)}</li>" for n in notes)
     period = f'{h["first"]} - {h["last"]}' if h["first"] else "no dated deployments yet"
-    success_fact = ""
-    if h["success_known"]:
-        pct = round(100 * h["success_yes"] / h["success_known"])
-        success_fact = (f'<div class="fact"><b>{pct}% ({h["success_yes"]}/{h["success_known"]})</b>'
-                        f'<span class="muted">operations completed (all main objectives)</span></div>')
+    success_fact = ""          # (no "operations completed": only completed operations are logged)
     if h["crash_hit"]:
         success_fact += (f'<div class="fact"><b>{h["crash_hit"]}</b>'
                          f'<span class="muted">deployments hit by crashes or players leaving</span></div>')
@@ -782,11 +778,11 @@ details summary{cursor:pointer;color:var(--text2);margin:8px 0}
   </div></div>
 </div>
 
-<h2>Highlights</h2>
-<div class="hls">{{HIGHLIGHTS}}</div>
-
 <h2>Planets</h2>
 {{PLANET_TABLE}}
+
+<h2>Highlights</h2>
+<div class="hls">{{HIGHLIGHTS}}</div>
 
 <h2>Deployment log</h2>
 <details open><summary>Most recent first</summary>{{DEPLOY_TABLE}}</details>
@@ -899,6 +895,10 @@ PLAYERS_TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Player lookup - {{TITLE}}</title>
 <style>{{STYLE}}
+:root{--cc-mix:35%}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--cc-mix:0%}}
+:root[data-theme="light"]{--cc-mix:0%}
+.cc{--ccl:color-mix(in srgb, var(--cc) calc(100% - var(--cc-mix)), white)}
 .search{display:flex;gap:8px;margin-top:22px}
 .search input{flex:1;min-width:0;font:inherit;font-size:18px;padding:12px 14px;background:var(--surface);color:var(--text);
  border:2px solid var(--line);outline:none}
@@ -1028,7 +1028,9 @@ function show(key, push){
   if(p.favourite) bits.push('favourite front: '+p.favourite);
   if(p.avg_diff!=null) bits.push('average difficulty '+p.avg_diff);
   pc.appendChild(el('div','psub',bits.join(' · ')));
-  if(p.unit){ const u=el('div','psub',p.unit); u.style.color='var(--text)'; u.style.fontWeight='700'; pc.appendChild(u); }
+  if(p.unit){ const u=el('div','psub'); u.style.color='var(--text)'; u.style.fontWeight='700';
+    if(p.unit_color){ const d=el('span','cc'); d.style.setProperty('--cc', p.unit_color); d.style.cssText+=';display:inline-block;width:12px;height:12px;margin-right:8px;background:var(--ccl)'; u.appendChild(d); }
+    u.appendChild(document.createTextNode(p.unit)); pc.appendChild(u); }
   const tiles = el('div','tiles6');
   tiles.appendChild(tile('Deployments', fmt(p.deployments), fmt(p.missions)+' missions'));
   tiles.appendChild(tile('Kills', fmt(p.kills), p.kills_per_mission+' per mission'));
