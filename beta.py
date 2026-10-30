@@ -43,8 +43,7 @@ def _nav(page: str) -> str:
 
 
 def report(page: str, ctx: dict) -> str:
-    import milestones                       # milestones section + milestone log (regiment & companies)
-    page = milestones.patch_report(page, _milestones(ctx))
+    # (milestones are on the live report now, so the copy already has them)
     try:                                    # raids: banner for 7 days + link to the raid page
         import raids
         rd = _raids(ctx)
@@ -57,8 +56,7 @@ def report(page: str, ctx: dict) -> str:
 
 
 def players(page: str, ctx: dict) -> str:
-    import milestones                       # personal milestones under best moments / career totals
-    return _nav(milestones.patch_players(page, _milestones(ctx)))
+    return _nav(page)                       # (personal milestones are on the live player cards now)
 
 
 def units(page: str, ctx: dict) -> str:

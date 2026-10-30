@@ -654,10 +654,25 @@ def main(argv=None):
                                 [st.get("drive_folder", "")]))
     except Exception as e:  # noqa: BLE001 - the unit page must never break the normal report
         print(f"Companies & squads page not built: {e}")
+    # milestones (targets in milestones.csv): report section + milestone log, personal milestones on player cards
+    ms = None
+    try:
+        import milestones
+        ms = milestones.compute(df, dep)
+        for name, patch in (("report.html", milestones.patch_report), ("players.html", milestones.patch_players)):
+            f = Path(a.input) / name
+            f.write_text(patch(f.read_text(encoding="utf-8"), ms), encoding="utf-8")
+        print(f"Milestones: {len(ms['events'])} reached ({len(ms['recent'])} in the last {milestones.RECENT_DAYS} days), "
+              f"{len(ms['close'])} almost there")
+    except Exception as e:  # noqa: BLE001 - milestones must never break the normal report
+        print(f"Milestones not added: {e}")
     # BETA section: local test copies (index_beta / players_beta / units_beta), never published - see beta.py
     try:
         import beta
-        print(beta.build(Path(a.input), dict(df=df, dep=dep, cards=cards, title=a.title, chart_js=chart_js)))
+        ctx = dict(df=df, dep=dep, cards=cards, title=a.title, chart_js=chart_js)
+        if ms is not None:
+            ctx["milestones"] = ms
+        print(beta.build(Path(a.input), ctx))
     except Exception as e:  # noqa: BLE001 - the beta must never break the normal report
         print(f"Beta pages not built: {e}")
     msgs = discord_text(a.title, h, fr, hl, a.discord_limit)

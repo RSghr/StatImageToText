@@ -157,7 +157,7 @@ Every run also writes `output/index_beta.html`, `players_beta.html` and `units_b
 pages with a red BETA banner, **never copied to htmlReport and never published** (browser panel: Share → Beta).
 Future changes are tried there first (hooks in `beta.py`), then moved into the normal pages once they look right.
 
-**Now in beta: milestones.** Targets are in `milestones.csv` (edit freely: level, stat, faction, steps, title). Best edited in Notepad; if Excel
+**Milestones (live since Oct 2026).** Targets are in `milestones.csv` (edit freely: level, stat, faction, steps, title). Best edited in Notepad; if Excel
 saves it with its own separators, the program puts the lines back together.
 Regiment and company milestones show on the report: "Milestone reached!" cards at the top for 7 days, otherwise
 the latest ones above the highlights, plus "Almost there" (80%+ of the next target) and a milestone log.
