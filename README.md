@@ -65,6 +65,13 @@ opens in your browser. Close the console window to stop it.
 
 `Stats UI.bat` (the desktop window) still works; both use the same files.
 
+### Bookmark it
+The panel always uses the same address on this PC. In *Settings & reset -> Bookmark the panel*, drag the button to
+your bookmarks bar (or copy the link). Tick **Start the panel with Windows** so it runs in the background (no window)
+from the moment you log in - the bookmark then always works. **Stop the panel** is on the same card; double-clicking
+`Stats Web UI.bat` while it already runs just opens it. The link holds the panel's key (`.panel_key`): it only works
+on this PC, but don't share it.
+
 ## Every deployment is kept: the history
 
 Each run adds its deployments to **`history/`**; the report and the player lookup are built from the **whole

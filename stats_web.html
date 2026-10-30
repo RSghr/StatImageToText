@@ -206,6 +206,15 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
 
 <!-- SETTINGS -->
 <section class="tab" id="t-settings">
+ <div class="card"><h3>Bookmark the panel</h3>
+  <p class="small muted">Bookmark this link (drag it to your bookmarks bar, or copy it). It only works on this PC, and only
+  while the panel is running - tick the box below so it always is.</p>
+  <div class="row"><a class="b" id="bmLink" href="#">505th Stats panel</a><button class="b" id="bmCopy">Copy link</button>
+   <span class="small err" id="bmWarn" hidden>The panel is not on port 8765 this time (another program uses it) - the bookmark won't open it.</span></div>
+  <label class="chk" style="margin-top:8px"><input type="checkbox" id="autoStart"> <span>Start the panel with Windows, in the background
+  (no window) - the bookmark then always works</span></label>
+  <div class="row" style="margin-top:6px"><button class="b" id="panelStop">Stop the panel</button>
+   <span class="small muted">Double-click Stats Web UI.bat (or restart the PC with the box ticked) to start it again.</span></div></div>
  <div class="card"><h3>Google Drive folder</h3>
   <p class="small muted">The <b>505th To_Process</b> folder synced by Google Drive for desktop, e.g. <code>H:\My Drive\505th To_Process</code>.
   Screenshots and form_answers.csv are read from it on every run. Leave empty to stop using it.</p>
@@ -230,7 +239,7 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
   <div class="row" style="margin-top:8px"><button class="b" id="rArchive">Archive (recommended)</button>
    <button class="b danger" id="rDelete">Delete permanently</button><span class="small" id="rMsg"></span></div></div>
 </section>
-<footer>Runs on this PC only (127.0.0.1). Close the console window to stop the panel.</footer>
+<footer>Runs on this PC only (127.0.0.1). Stop it from Settings, or close its console window.</footer>
 </div>
 <div class="toast" id="toast"></div>
 <script>
@@ -256,8 +265,10 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
 
 // status
 let ST = {};
-async function refresh(){
+let STOPPED=false;
+async function refresh(){ if(STOPPED) return;
   try{ ST = await api('/api/status'); }catch(e){ $('#busy').textContent='Panel stopped'; return; }
+  if(STOPPED) return;
   const tiles = [
     ['Screenshots', String(ST.shots_local + ST.shots_drive), ST.drive_ok ? `${ST.shots_drive} in Drive · ${ST.shots_local} in To_Process` : `${ST.shots_local} in To_Process · Drive folder not set`],
     ['Form answers', ST.form ? '✓' : '—', ST.form || 'none: dates / fronts will be missing', !ST.form],
@@ -274,7 +285,7 @@ async function refresh(){
 }
 // log
 let logNext = 0, wasRunning = false;
-async function pollLog(){
+async function pollLog(){ if(STOPPED) return;
   try{
     const j = await api('/api/log?since='+logNext);
     const box = $('#log'); const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
@@ -449,7 +460,16 @@ $('#publish').onclick = () => guard(async()=>{ await api('/api/publish',{}); toa
 
 // settings
 $('#trustOrder').onchange = e => guard(async()=>{ await api('/api/settings',{trust_form_order:e.target.checked}); toast('Saved - applies at the next Run report.'); refresh(); });
-function loadSettings(){ $('#trustOrder').checked = ST.trust_form_order !== false; $('#drivePath').value = ST.drive_setting || ''; $('#driveMsg').textContent = ST.drive_ok ? `✓ found - ${ST.shots_drive} screenshots` : (ST.drive_setting ? 'folder not found' : ''); $('#driveMsg').className='small '+(ST.drive_ok?'ok':'err'); }
+async function loadPanel(){ await guard(async()=>{ const j=await api('/api/panel');
+  $('#bmLink').href=j.bookmark; $('#bmLink').dataset.url=j.bookmark; $('#bmWarn').hidden=j.fixed_port;
+  $('#autoStart').checked=j.autostart; $('#autoStart').disabled=!j.windows; }); }
+$('#bmLink').onclick = e => { e.preventDefault(); toast('Drag this button to your bookmarks bar, or use Copy link.'); };
+$('#bmCopy').onclick = () => copyText($('#bmLink').dataset.url||'');
+$('#autoStart').onchange = e => guard(async()=>{ const j=await api('/api/panel/autostart',{on:e.target.checked});
+  toast(j.autostart ? 'The panel will start with Windows.' : 'The panel will no longer start with Windows.'); });
+$('#panelStop').onclick = () => guard(async()=>{ if(!confirm('Stop the panel? (the bookmark works again once it is started)')) return;
+  await api('/api/panel/stop',{}); STOPPED=true; document.body.innerHTML='<p style="padding:24px;font:16px sans-serif">The panel is stopped. Start it again with Stats Web UI.bat.</p>'; });
+function loadSettings(){ loadPanel(); $('#trustOrder').checked = ST.trust_form_order !== false; $('#drivePath').value = ST.drive_setting || ''; $('#driveMsg').textContent = ST.drive_ok ? `✓ found - ${ST.shots_drive} screenshots` : (ST.drive_setting ? 'folder not found' : ''); $('#driveMsg').className='small '+(ST.drive_ok?'ok':'err'); }
 $('#driveSave').onclick = () => guard(async()=>{ await api('/api/settings',{drive_folder:$('#drivePath').value}); await refresh(); loadSettings(); toast('Saved.'); });
 document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => guard(()=>api('/api/open',{what:b.dataset.open})));
 async function reset(action){

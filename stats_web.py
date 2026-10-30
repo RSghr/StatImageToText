@@ -34,9 +34,59 @@ from ui_core import (ARCHIVE, CORR, DISCORD, HERE, HISTORY, HTML_DIR, IMG_EXT, O
                      import_paths, items_to_clear, last_report, load_settings, open_corrections, open_path,
                      python_exe, save_settings)
 
-TOKEN = secrets.token_urlsafe(24)
 UPLOADS = HERE / ".uploads"
 PAGE = HERE / "stats_web.html"
+PORT = 8765                         # fixed, so the panel address can be bookmarked
+KEY_FILE = HERE / ".panel_key"      # the panel's secret key (kept, so a bookmark keeps working)
+STARTUP_NAME = "505th Stats Panel.vbs"
+
+
+def panel_key() -> str:
+    try:
+        k = KEY_FILE.read_text(encoding="utf-8").strip()
+        if len(k) >= 24:
+            return k
+    except OSError:
+        pass
+    k = secrets.token_urlsafe(24)
+    try:
+        KEY_FILE.write_text(k, encoding="utf-8")
+    except OSError:
+        pass
+    return k
+
+
+TOKEN = panel_key()
+SERVER = None                       # set in main(), used by "Stop the panel"
+
+
+def bookmark_url(port: int | None = None) -> str:
+    return f"http://127.0.0.1:{port or PORT}/?k={TOKEN}"
+
+
+def startup_file() -> Path | None:
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return None
+    return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / STARTUP_NAME
+
+
+def set_autostart(on: bool) -> bool:
+    """Start the panel (hidden, no window) when Windows starts: a small .vbs in the Startup folder."""
+    f = startup_file()
+    if f is None:
+        raise ValueError("Only available on Windows.")
+    if not on:
+        f.unlink(missing_ok=True)
+        return False
+    py = Path(python_exe())
+    pyw = py.with_name("pythonw.exe")
+    exe = pyw if pyw.exists() else py
+    q = lambda s: '""' + str(s).replace('"', '') + '""'     # noqa: E731 - VBScript quoting
+    f.write_text('Set sh = CreateObject("WScript.Shell")\r\n'
+                 f'sh.CurrentDirectory = "{str(HERE).replace(chr(34), "")}"\r\n'
+                 f'sh.Run "{q(exe)} {q(HERE / "stats_web.py")} --background", 0, False\r\n', encoding="utf-8")
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -266,12 +316,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, b"Forbidden", "text/plain")
         url = urllib.parse.urlsplit(self.path)
         q = urllib.parse.parse_qs(url.query)
+        if url.path == "/ping":                   # "is the panel already running?" (no data, no key)
+            return self._send(200, b"505th-panel", "text/plain")
         if url.path == "/":
             if q.get("k", [""])[0] == TOKEN:      # first visit from the launcher: remember the key, clean URL
                 return self._send(303, b"", "text/plain", {
-                    "Location": "/", "Set-Cookie": f"k505={TOKEN}; HttpOnly; SameSite=Strict; Path=/"})
+                    "Location": "/", "Set-Cookie": f"k505={TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000"})
             if not self._cookie_ok():
-                return self._send(403, "Open the panel with Stats Web UI.bat (this page needs its key).".encode(),
+                return self._send(403, "Open the panel with Stats Web UI.bat or your bookmark (this page needs its key).".encode(),
                                   "text/plain; charset=utf-8")
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         if not self._cookie_ok():
@@ -289,6 +341,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"rows": read_csv(CORR)})
             if url.path == "/api/players":
                 return self._json({"rows": read_csv(PLAYERS)})
+            if url.path == "/api/panel":
+                f = startup_file()
+                return self._json({"bookmark": bookmark_url(self.server.server_address[1]),
+                                   "fixed_port": self.server.server_address[1] == PORT,
+                                   "autostart": bool(f and f.exists()), "windows": f is not None})
             if url.path == "/api/raids":
                 import raids
                 return self._json(raids.panel_state())
@@ -332,6 +389,16 @@ class Handler(BaseHTTPRequestHandler):
                 ok = JOBS.start("Run & publish" if b.get("publish") else "Run report",
                                 lambda: fn(bool(b.get("force"))))
                 return self._json({"ok": ok, "busy": not ok})
+            if path == "/api/panel/autostart":
+                try:
+                    return self._json({"ok": True, "autostart": set_autostart(bool(b.get("on")))})
+                except (ValueError, OSError) as e:
+                    return self._err(str(e))
+            if path == "/api/panel/stop":
+                if JOBS.running:
+                    return self._err("Wait until the current job has finished.")
+                threading.Timer(0.3, lambda: SERVER and SERVER.shutdown()).start()
+                return self._json({"ok": True})
             if path.startswith("/api/raids/"):
                 import raids
                 try:
@@ -508,20 +575,41 @@ def free_port(preferred: int = 8765) -> int:
     return 0
 
 
+def already_running(port: int) -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping", timeout=1.5) as r:
+            return r.read(32) == b"505th-panel"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def main():
+    global SERVER
     try:
         sys.stdout.reconfigure(errors="replace")
     except Exception:  # noqa: BLE001
         pass
+    background = "--background" in sys.argv
+    if already_running(PORT):                    # one panel only: just open it
+        if not background:
+            print("The panel is already running - opening it in the browser.")
+            webbrowser.open(bookmark_url())
+        return
     shutil.rmtree(UPLOADS, ignore_errors=True)
-    port = free_port()
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        srv = ThreadingHTTPServer(("127.0.0.1", free_port(PORT + 1)), Handler)
+        print(f"Port {PORT} is used by another program - using {srv.server_address[1]} this time "
+              "(the bookmark only works on 8765).")
+    SERVER = srv
     port = srv.server_address[1]
-    url = f"http://127.0.0.1:{port}/?k={TOKEN}"
+    url = bookmark_url(port)
     print("505th Stat Department - browser panel")
-    print(f"Open: {url}")
-    print("Only this PC can reach it. Close this window to stop the panel.")
-    if "--no-browser" not in sys.argv:
+    print(f"Open / bookmark: {url}")
+    print("Only this PC can reach it. Close this window (or Settings -> Stop the panel) to stop it.")
+    if not background and "--no-browser" not in sys.argv:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
