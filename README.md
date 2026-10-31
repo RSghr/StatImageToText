@@ -175,8 +175,9 @@ Raids tab with a *Create raid* button. Raid deployments still count in all the n
 
 ## Discord inbox (in progress - branch `discord-intake`)
 
-The register bot posts every approved deployment (details + the optional stat screenshots) into a channel of your
-private server; `discord_inbox.py` reads the new messages at the start of every Run report, downloads the
+The register bot posts every register (details + the optional stat screenshots) into a channel of your private
+server, again at each status change; only **confirmed** and **denied** registers count (pending / flagged ones wait
+in `history\discord_waiting` until reviewed); `discord_inbox.py` reads the new messages at the start of every Run report, downloads the
 screenshots into `To_Process\discord` and writes the details to `history\discord_answers.csv`, which is read like
 the Google Form answers (both can be used together). What the bot must post: `docs/discord_intake.md`.
 
@@ -184,7 +185,7 @@ Setup: Developer Portal -> your app -> **Bot**: switch on *Message Content Inten
 In your private server: give the bot *View Channel* + *Read Message History* on the inbox channel; turn on
 Developer Mode (User Settings -> Advanced) and right-click the channel -> *Copy Channel ID*. Browser panel ->
 *Settings & reset -> Discord inbox*: paste both, **Save**, **Test connection**. Test without the register bot:
-post a message there with three screenshots and lines like `Host: Pengus`, `Members: Pengus, Vicktor, Panini, Tiger`,
+post a message there with three screenshots and lines like `Host: Pengus`, `Members: Vicktor, Panini, Tiger`,
 `Planet: Luxuriant`, `Enemy: Terminids`, `Start: <t:1792876200:F>`, `Operation: Test drop`.
 
 ## Automatic pickup from Google Drive (no more downloading)

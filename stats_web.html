@@ -495,7 +495,7 @@ $('#colSave').onclick = () => guard(async()=>{ const cols={}; document.querySele
   await api('/api/colors',{colors:cols}); $('#colMsg').textContent='Saved - Run report to apply.'; $('#colMsg').className='small ok'; loadColors(); });
 async function loadInbox(){ await guard(async()=>{ const j=await api('/api/inbox'); $('#ibChan').value=j.channel||'';
   $('#ibToken').placeholder = j.has_token ? 'saved - paste a new one to replace it' : 'paste the bot token';
-  $('#ibMsg').textContent = j.has_token && j.channel ? j.deployments+' deployment(s) received so far' : 'not set up yet'; $('#ibMsg').className='small muted'; }); }
+  $('#ibMsg').textContent = j.has_token && j.channel ? j.deployments+' register(s) counted, '+j.waiting+' waiting for review' : 'not set up yet'; $('#ibMsg').className='small muted'; }); }
 $('#ibSave').onclick = () => guard(async()=>{ await api('/api/inbox',{token:$('#ibToken').value, channel:$('#ibChan').value});
   $('#ibToken').value=''; toast('Saved.'); loadInbox(); });
 $('#ibTest').onclick = () => guard(async()=>{ $('#ibMsg').textContent='Testing...';

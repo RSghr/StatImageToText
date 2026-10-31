@@ -12,7 +12,9 @@ Nothing has to run all the time: Discord keeps the messages, so every Run report
 last one. For each deployment:
   * screenshots  -> To_Process/discord/D<time>_<Host>_<A1>_<A2>_<A3>_<n>.png  (same naming as the Drive script)
   * details      -> history/discord_answers.csv (same columns as the Google Form, read next to it)
-A later message with the same register ID replaces the earlier one (edit); status "denied" removes it.
+Every register is posted, at every status change; the newest message of a register ID wins. Only CONFIRMED and
+DENIED registers count (denied = the host loses the point, the deployment still counts). PENDING and FLAGGED ones
+wait aside (history/discord_waiting) until they are reviewed; "deleted"/"cancelled" removes one.
 
 Setup (browser panel -> Settings -> Discord inbox): the bot token (kept in .discord_token, never shared) and the
 channel ID. The bot needs "Message Content Intent" (Developer Portal -> Bot) and, in that channel, View Channel +
@@ -38,6 +40,7 @@ SETTINGS = HERE / "settings.json"
 STATE = HERE / "history" / "discord_inbox.json"
 ANSWERS = HERE / "history" / "discord_answers.csv"
 DEST = HERE / "To_Process" / "discord"
+HOLD = HERE / "history" / "discord_waiting"     # screenshots of registers not confirmed / denied yet
 LOCAL_TZ = "Europe/Paris"
 IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 MAX_BYTES = 25 * 1024 * 1024
@@ -255,12 +258,42 @@ def write_answers(records: dict):
             w.writerow({k: r.get(k, "") for k in FIELDS})
 
 
+COUNTED = {"confirmed", "denied", "approved", "accepted"}   # denied = the host loses the point, it still counts
+WAITING = {"pending", "flagged"}                            # not reviewed yet / the host has time to fix it
+DROPPED = {"deleted", "cancelled", "canceled"}             # gone for good
+
+
+def counted(rec: dict) -> bool:
+    st = str(rec.get("status") or "").lower()
+    return st in COUNTED or st == ""         # no status at all (a message posted by hand to test) counts
+
+
+def folder(rec: dict) -> Path:
+    return DEST if counted(rec) else HOLD
+
+
 def remove_files(rec: dict):
     for name in rec.get("files", []):
-        try:
-            (DEST / name).unlink()
-        except OSError:
-            pass
+        for d in (DEST, HOLD):
+            try:
+                (d / name).unlink()
+            except OSError:
+                pass
+
+
+def place_files(rec: dict):
+    """Counted -> To_Process/discord (read by the report); waiting -> history/discord_waiting (kept aside)."""
+    to = folder(rec)
+    to.mkdir(parents=True, exist_ok=True)
+    for name in rec.get("files", []):
+        other = HOLD if to == DEST else DEST
+        if (other / name).exists() and not (to / name).exists():
+            (other / name).replace(to / name)
+
+
+ROW_FIELDS = ["Operation starting date", "Operation Name", "Planet", "Enemy", "Difficulty", "Operation Success",
+              "Were any of your missions affected", "Raid"]
+NAME_FIELDS = ["Host Callsign", "Attendee 1 Callsign", "Attendee 2 Callsign", "Attendee 3 Callsign"]
 
 
 def sync(say=print, fetch_messages=None, fetch=download) -> dict:
@@ -272,63 +305,71 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
     msgs = (fetch_messages or new_messages)(chan, st.get("last_id", "0"))
     added = updated = removed = shots = 0
     problems = []
-    DEST.mkdir(parents=True, exist_ok=True)
     for msg in msgs:
         st["last_id"] = msg["id"]
         d = details(msg, fetch)
-        names = members_of(d)
         key = str(d.get("id") or f"msg{msg['id']}")
         old = st["records"].get(key)
-        if str(d.get("status", "")).strip().lower() in ("denied", "rejected", "deleted", "cancelled", "canceled"):
+        status = str(d.get("status") or (old or {}).get("status") or "").strip().lower()
+        if status in DROPPED:
             if old:
                 remove_files(old)
                 del st["records"][key]
                 removed += 1
             continue
-        if not names and not images(msg):
+        names = members_of(d) or ([old[f] for f in NAME_FIELDS if old.get(f)] if old else [])
+        imgs = images(msg)
+        if not names and not imgs and not old:
             continue                                      # chat / unrelated message
         if not names:
             problems.append(f"message {msg['id']}: screenshots but no member list - skipped")
             continue
         posted = local_time(msg["timestamp"]) if not old else dt.datetime.fromisoformat(old["posted"])
         dep = "D" + posted.strftime("%Y%m%d%H%M%S")
-        rec = {"posted": posted.isoformat(), "message": msg["id"],
-               "Timestamp": posted.strftime("%Y-%m-%d %H:%M:%S"), "Register ID": key, "Source": "Discord",
-               "Operation starting date": start_text(d.get("start")), "Operation Name": d.get("operation", ""),
+        new = {"Operation starting date": start_text(d.get("start")), "Operation Name": d.get("operation", ""),
                "Planet": d.get("planet", ""), "Enemy": d.get("enemy", ""), "Difficulty": d.get("difficulty", ""),
                "Operation Success": yes_no(d.get("success", "")),
-               "Were any of your missions affected": yes_no(d.get("crashed", "")), "Raid": yes_no(d.get("raid", "")),
-               "files": old.get("files", []) if old else []}
-        for i, label in enumerate(["Host Callsign", "Attendee 1 Callsign", "Attendee 2 Callsign", "Attendee 3 Callsign"]):
+               "Were any of your missions affected": yes_no(d.get("crashed", "")), "Raid": yes_no(d.get("raid", ""))}
+        rec = dict(old or {})
+        rec.update({"posted": posted.isoformat(), "message": msg["id"], "status": status,
+                    "Timestamp": posted.strftime("%Y-%m-%d %H:%M:%S"), "Register ID": key, "Source": "Discord"})
+        for k, v in new.items():                          # a status-only update keeps the details it had
+            if v not in ("", None) or k not in rec:
+                rec[k] = v
+        for i, label in enumerate(NAME_FIELDS):
             rec[label] = names[i] if i < len(names) else ""
-        imgs = images(msg)
+        rec.setdefault("files", [])
         if imgs:                                          # new screenshots replace the old ones of this deployment
-            if old:
-                remove_files(old)
-            files = []
+            remove_files(rec)
+            files, to = [], folder(rec)
+            to.mkdir(parents=True, exist_ok=True)
             stem = "_".join([dep] + [safe(n) for n in names])
             for n, a in enumerate(imgs, 1):
                 ext = Path(a.get("filename", "")).suffix.lower()
                 ext = ext if ext in IMG_EXT else ".png"
                 name = f"{stem}_{n}{ext}"
                 try:
-                    (DEST / name).write_bytes(fetch(a["url"]))
+                    (to / name).write_bytes(fetch(a["url"]))
                     files.append(name)
                     shots += 1
                 except Exception as e:  # noqa: BLE001
                     problems.append(f"{key}: screenshot {n} not downloaded ({e})")
             rec["files"] = files
+        place_files(rec)
         st["records"][key] = rec
         if old:
             updated += 1
         else:
             added += 1
-    write_answers(st["records"])
+    write_answers({k: r for k, r in st["records"].items() if counted(r)})
     save_state(st)
+    n_count = sum(1 for r in st["records"].values() if counted(r))
+    n_wait = len(st["records"]) - n_count
     res = dict(messages=len(msgs), added=added, updated=updated, removed=removed, screenshots=shots,
-               deployments=len(st["records"]), problems=problems)
-    say(f"Discord inbox: {len(msgs)} new message(s) - {added} deployment(s) added, {updated} updated, "
-        f"{removed} removed, {shots} screenshot(s) downloaded ({len(st['records'])} from Discord in total)")
+               counted=n_count, waiting=n_wait, problems=problems)
+    say(f"Discord inbox: {len(msgs)} new message(s) - {added} register(s) added, {updated} updated, {removed} removed, "
+        f"{shots} screenshot(s) downloaded. In total: {n_count} counted (confirmed / denied), "
+        f"{n_wait} waiting (pending / flagged)")
     for p in problems:
         say("  ! " + p)
     return res

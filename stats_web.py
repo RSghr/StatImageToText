@@ -352,9 +352,10 @@ class Handler(BaseHTTPRequestHandler):
                                    "autostart": bool(f and f.exists()), "windows": f is not None})
             if url.path == "/api/inbox":
                 import discord_inbox as di
-                st = di.load_state()
+                recs = di.load_state().get("records", {}).values()
+                n = sum(1 for r in recs if di.counted(r))
                 return self._json({"has_token": bool(di.token()), "channel": di.channel_id(),
-                                   "deployments": len(st.get("records", {}))})
+                                   "deployments": n, "waiting": len(recs) - n})
             if url.path == "/api/colors":
                 return self._json({"companies": company_colors_list()})
             if url.path == "/api/raids":

@@ -6,11 +6,23 @@ you (keep it secret – anyone with it can post there).
 
 ## When to post
 
-* When a register is **approved**: one message with the deployment details (+ the screenshots if the optional
-  **stat modal** was filled).
-* When the stat modal is filled **later**: post again with the same `register_id` and the screenshots.
-* When a register is **edited**: post again with the same `register_id` (the newest message wins).
-* When a register is **denied / cancelled**: post `{"register_id": "...", "status": "denied"}` – it is removed.
+Post **every register**, and post it **again each time something changes** – always with the same `register_id`
+(the newest message of a register wins):
+
+* when it is sent (status `pending`), with the screenshots if the optional **stat modal** was filled;
+* when its status changes (`flagged`, `confirmed`, `denied`) or the host edits it;
+* when the stat modal is filled later (attach the screenshots then).
+
+| Status | Meaning | Counted in the stats? |
+|---|---|---|
+| `pending` | not reviewed yet | not yet (kept aside) |
+| `flagged` | something is wrong, the host has time to fix it | not yet (kept aside) |
+| `confirmed` | reviewed, all good | **yes** |
+| `denied` | the host made a mistake (no point for them) – the deployment still happened | **yes** |
+| `deleted` / `cancelled` | the register is gone | removed |
+
+A status-only update is enough (`{"register_id": "4821", "status": "confirmed"}`): the details and screenshots
+already received are kept.
 
 ## The message
 
@@ -26,9 +38,9 @@ The text of the message can be anything readable for humans (an embed is fine).
 ```json
 {
   "register_id": "4821",
-  "status": "approved",
+  "status": "pending",
   "host": "Pengus",
-  "members": ["Pengus", "Vicktor", "Panini", "Tiger"],
+  "members": ["Vicktor", "Panini", "Tiger"],
   "operation": "HOTDROP 8132-7735",
   "start": 1792876200,
   "planet": "Luxuriant",
@@ -40,8 +52,8 @@ The text of the message can be anything readable for humans (an embed is fine).
 }
 ```
 
-* `members`: callsigns, **host first, then in the order the players appear on the stat screen, left to right**
-  (the program uses that order to match the screenshots). 1 to 4 names.
+* `host`: the host's callsign. `members`: the other players only (0 to 3), **in the order they appear on the stat
+  screen after the host, left to right** – the program uses that order to match the screenshots.
 * `start`: the operation start as a Unix timestamp (seconds) – the same number as in `<t:1792876200:F>`.
 * `enemy`: `Terminids`, `Automatons` or `Illuminates`.
 * `crashed`: the stat-modal answer about crashed missions / players leaving (free text is fine, e.g. `"No"` or
