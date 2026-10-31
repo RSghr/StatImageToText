@@ -48,7 +48,7 @@ CDN_HOSTS = {"cdn.discordapp.com", "media.discordapp.net"}
 # same headers as the Google Form, so hd2stats reads both the same way
 FIELDS = ["Timestamp", "Host Callsign", "Attendee 1 Callsign", "Attendee 2 Callsign", "Attendee 3 Callsign",
           "Operation starting date", "Operation Name", "Planet", "Enemy", "Difficulty", "Operation Success",
-          "Were any of your missions affected", "Raid", "Register ID", "Source"]
+          "Raid", "Register ID", "Source"]
 KEYS = {  # accepted spellings in deployment.json / "Key: value" lines -> field
     "register_id": "id", "register": "id", "id": "id", "registerid": "id", "deploymentid": "id",
     "status": "status", "state": "status",
@@ -60,7 +60,6 @@ KEYS = {  # accepted spellings in deployment.json / "Key: value" lines -> field
     "enemy": "enemy", "front": "enemy", "faction": "enemy",
     "difficulty": "difficulty", "diff": "difficulty",
     "success": "success", "operationsuccess": "success", "completed": "success",
-    "crashed": "crashed", "crash": "crashed", "crashes": "crashed", "affected": "crashed", "missionsaffected": "crashed",
     "raid": "raid",
 }
 
@@ -292,7 +291,7 @@ def place_files(rec: dict):
 
 
 ROW_FIELDS = ["Operation starting date", "Operation Name", "Planet", "Enemy", "Difficulty", "Operation Success",
-              "Were any of your missions affected", "Raid"]
+              "Raid"]
 NAME_FIELDS = ["Host Callsign", "Attendee 1 Callsign", "Attendee 2 Callsign", "Attendee 3 Callsign"]
 
 
@@ -328,8 +327,7 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
         dep = "D" + posted.strftime("%Y%m%d%H%M%S")
         new = {"Operation starting date": start_text(d.get("start")), "Operation Name": d.get("operation", ""),
                "Planet": d.get("planet", ""), "Enemy": d.get("enemy", ""), "Difficulty": d.get("difficulty", ""),
-               "Operation Success": yes_no(d.get("success", "")),
-               "Were any of your missions affected": yes_no(d.get("crashed", "")), "Raid": yes_no(d.get("raid", ""))}
+               "Operation Success": yes_no(d.get("success", "")), "Raid": yes_no(d.get("raid", ""))}
         rec = dict(old or {})
         rec.update({"posted": posted.isoformat(), "message": msg["id"], "status": status,
                     "Timestamp": posted.strftime("%Y-%m-%d %H:%M:%S"), "Register ID": key, "Source": "Discord"})

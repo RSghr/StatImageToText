@@ -52,7 +52,7 @@ def load_df(df: pd.DataFrame) -> pd.DataFrame:
             seen[dep] = n
             names[uid] = dep if n == 1 else f"{dep} ({n})"
         df["deployment"] = df["uid"].map(names)
-    for c in ("date", "operation", "planet", "sector", "difficulty", "front", "success", "missions_affected", "raid"):
+    for c in ("date", "operation", "planet", "sector", "difficulty", "front", "success", "raid"):
         if c not in df.columns:
             df[c] = None
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -70,6 +70,16 @@ def load_df(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         pass
     df["player_key"] = df["player"].str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+    # player-missions left out of the averages in the browser panel (History): still in the totals
+    try:
+        import history
+        keys = history.excluded_keys()
+    except Exception:  # noqa: BLE001
+        keys = set()
+    slot = df["slot"].astype(str).str.split(".").str[0] if "slot" in df.columns else pd.Series("", index=df.index)
+    fh = df["file_hash"].astype(object).fillna("").astype(str) if "file_hash" in df.columns else pd.Series("", index=df.index)
+    fl = df["file"].astype(object).fillna("").astype(str) if "file" in df.columns else pd.Series("", index=df.index)
+    df["in_avg"] = [not ((h, s) in keys or (f, s) in keys) for h, s, f in zip(fh, slot, fl)]
     for c in SUMMABLE:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
     df["accuracy"] = pd.to_numeric(df["accuracy"], errors="coerce")
@@ -80,14 +90,19 @@ def deployments(df: pd.DataFrame) -> pd.DataFrame:
     g = df.groupby("deployment", sort=False)
     dep = g.agg(date=("date", "first"), operation=("operation", "first"), planet=("planet", "first"),
                 sector=("sector", "first"), difficulty=("difficulty", "first"), front=("front", "first"),
-                success=("success", "first"), missions_affected=("missions_affected", "first"),
+                success=("success", "first"),
                 missions=("mission", "nunique"), **{c: (c, "sum") for c in SUMMABLE})
     dep["squad"] = g["player"].apply(lambda s: ", ".join(dict.fromkeys(s)))
     dep["kd"] = dep["kills"] / dep["deaths"].where(dep["deaths"] > 0)
     dep["success"] = dep["success"].astype(object).fillna("").astype(str).str.strip().replace({"nan": ""})
-    dep["missions_affected"] = dep["missions_affected"].astype(object).fillna("").astype(str).str.strip().replace({"nan": ""})
     dep = dep.reset_index().sort_values(["date", "deployment"], na_position="last").reset_index(drop=True)
     return dep
+
+
+def avg_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows used for averages, records and "per mission" numbers: without the player-missions left out in the
+    browser panel (History). Totals use every row."""
+    return df[df["in_avg"]] if "in_avg" in df.columns else df
 
 
 def ratio(a, b):
@@ -180,7 +195,7 @@ def weekly(dep: pd.DataFrame) -> pd.DataFrame:
 
 def highlights(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
     """Fun outliers: one card each. Mission-level unless stated."""
-    rows = df.copy()
+    rows = avg_rows(df).copy()           # (player-missions left out in the panel aren't records either)
     rows["where"] = rows["operation"].astype(object).fillna("").astype(str)
     rows.loc[rows["where"].isin(["", "nan"]), "where"] = rows["deployment"]
     out = []
@@ -237,7 +252,7 @@ def headline(df: pd.DataFrame, dep: pd.DataFrame) -> dict:
         shots=t["shots_fired"], stratagems=t["stratagems_used"], samples=t["samples_extracted"],
         reinforcements=t["times_reinforcing"], stims=t["stims_used"], ff=t["friendly_fire_damage"],
         melee=t["melee_kills"], accidentals=t["accidentals"],
-        deathless=int((df["deaths"] == 0).sum()), player_missions=len(df),
+        deathless=int((avg_rows(df)["deaths"] == 0).sum()), player_missions=len(avg_rows(df)),
         first=dated.min().strftime("%d %b %Y") if len(dated) else "",
         last=dated.max().strftime("%d %b %Y") if len(dated) else "",
         undated=int(dep["date"].isna().sum()), unknown_front=int((dep["front"] == "Unknown").sum()),
@@ -245,7 +260,6 @@ def headline(df: pd.DataFrame, dep: pd.DataFrame) -> dict:
         flagged=int(df.get("flagged_stats", pd.Series(dtype=str)).astype(object).fillna("").astype(str).ne("").sum()),
         success_known=int(dep["success"].str.lower().isin(["yes", "no"]).sum()),
         success_yes=int((dep["success"].str.lower() == "yes").sum()),
-        crash_hit=int((dep["missions_affected"] != "").sum()),
         first_ts=_epoch(dated.min()) if len(dated) else None,
         last_ts=_epoch(dated.max()) if len(dated) else None,
     )
@@ -378,9 +392,6 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
     notes_html = "".join(f"<li>{html.escape(n)}</li>" for n in notes)
     period = f'{h["first"]} - {h["last"]}' if h["first"] else "no dated deployments yet"
     success_fact = ""          # (no "operations completed": only completed operations are logged)
-    if h["crash_hit"]:
-        success_fact += (f'<div class="fact"><b>{h["crash_hit"]}</b>'
-                         f'<span class="muted">deployments hit by crashes or players leaving</span></div>')
     deathless_pct = 100 * h["deathless"] / h["player_missions"] if h["player_missions"] else 0
 
     return TEMPLATE.replace("{{TITLE}}", html.escape(title)) \
@@ -415,7 +426,6 @@ def write_xlsx(path: Path, h, ot, fr, dif, pl, wk, hl, dep):
         ("Friendly fire damage", h["ff"]), ("Accidentals", h["accidentals"]),
         ("Missions without dying (player-missions)", h["deathless"]),
         ("Operations completed", f'{h["success_yes"]}/{h["success_known"]}' if h["success_known"] else ""),
-        ("Deployments hit by crashes / players leaving", h["crash_hit"]),
     ], columns=["Metric", "Value"])
     ot = ot.copy()
     for c in ot.columns:
@@ -527,13 +537,16 @@ def player_cards(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
             op = r["operation"] if isinstance(r["operation"], str) and r["operation"] not in ("", "nan") else r["deployment"]
             return dict(op=str(op), mission=int(r["mission"]),
                         date=r["date"].strftime("%d %b %Y") if pd.notna(r["date"]) else "")
+        ga = avg_rows(g)                     # per-mission numbers leave out the player-missions set aside
+        ta = {c: int(ga[c].sum()) for c in SUMMABLE}
+        na = len(ga)
         moments = []
         for col, label, unit in (("kills", "Most kills in a mission", "kills"),
                                  ("stims_used", "Most stims in a mission", "stims"),
                                  ("stratagems_used", "Most stratagems in a mission", "stratagems"),
                                  ("times_reinforcing", "Most reinforcements in a mission", "reinforces")):
-            if len(g) and g[col].max() > 0:
-                r = g.loc[g[col].idxmax()]
+            if na and ga[col].max() > 0:
+                r = ga.loc[ga[col].idxmax()]
                 moments.append(dict(label=label, value=int(r[col]), unit=unit, **where(r)))
         recent = []
         for d in sorted(deps, key=lambda d: (dinfo.at[d, "date"] if d in dinfo.index and pd.notna(dinfo.at[d, "date"])
@@ -560,18 +573,18 @@ def player_cards(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
             shots=t["shots_fired"], stims=t["stims_used"], stratagems=t["stratagems_used"],
             samples=t["samples_extracted"], reinforcing=t["times_reinforcing"], melee=t["melee_kills"],
             ff=t["friendly_fire_damage"], accidentals=t["accidentals"],
-            deathless=int((g["deaths"] == 0).sum()),
-            kills_per_mission=round(t["kills"] / len(g), 1) if len(g) else 0,
+            deathless=int((ga["deaths"] == 0).sum()), missions_avg=na,
+            kills_per_mission=round(ta["kills"] / na, 1) if na else 0,
             avg_diff=round(float(di["difficulty"].mean()), 1) if len(di) and di["difficulty"].notna().any() else None,
             first=dates.min().strftime("%d %b %Y") if len(dates) else "",
             last=dates.max().strftime("%d %b %Y") if len(dates) else "",
             favourite=fav, fronts=fronts, moments=moments,
-            radar=[round(t["kills"] / len(g), 2),
-                   round(100 * ratio(t["shots_hit"], t["shots_fired"]), 2) if t["shots_fired"] else None,
-                   round(t["melee_kills"] / len(g), 2), round(t["deaths"] / len(g), 2),
-                   round(100 * int((g["deaths"] == 0).sum()) / len(g), 2),
-                   round(t["stratagems_used"] / len(g), 2), round(t["stims_used"] / len(g), 2),
-                   round(t["friendly_fire_damage"] / len(g), 2)],
+            radar=[round(ta["kills"] / na, 2),
+                   round(100 * ratio(ta["shots_hit"], ta["shots_fired"]), 2) if ta["shots_fired"] else None,
+                   round(ta["melee_kills"] / na, 2), round(ta["deaths"] / na, 2),
+                   round(100 * int((ga["deaths"] == 0).sum()) / na, 2),
+                   round(ta["stratagems_used"] / na, 2), round(ta["stims_used"] / na, 2),
+                   round(ta["friendly_fire_damage"] / na, 2)] if na else [None] * 8,
             mates=[dict(name=str(name_of.get(k, k)), key=k, games=n, pct=round(100 * n / len(deps)))
                    for k, n in top],
             recent=recent))
@@ -1061,7 +1074,7 @@ function show(key, push){
   tiles.appendChild(tile('Kills', fmt(p.kills), p.kills_per_mission+' per mission'));
   tiles.appendChild(tile('Casualties', fmt(p.deaths), 'K/D '+(p.kd==null?'-':p.kd.toFixed(2))));
   tiles.appendChild(tile('Accuracy', p.accuracy==null?'-':p.accuracy.toFixed(1)+'%', fmt(p.shots)+' shots fired'));
-  tiles.appendChild(tile('Never died', fmt(p.deathless), 'of '+fmt(p.missions)+' missions'));
+  tiles.appendChild(tile('Never died', fmt(p.deathless), 'of '+fmt(p.missions_avg ?? p.missions)+' missions'));
   tiles.appendChild(tile('Stratagems', fmt(p.stratagems), fmt(p.reinforcing)+' reinforcements'));
   pc.appendChild(tiles);
   pc.appendChild(profileCard(p));

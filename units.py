@@ -38,13 +38,19 @@ def assign(df: pd.DataFrame, units: "roster.Units") -> pd.DataFrame:
 
 
 def group_stats(rows: pd.DataFrame) -> dict:
+    total = len(rows)
+    if not total:
+        return dict(missions=0, reporters=0)
+    every = rows
+    rows = rows[rows["in_avg"]] if "in_avg" in rows.columns else rows   # per mission: without the ones set aside
     n = len(rows)
     if not n:
-        return dict(missions=0, reporters=0)
+        return dict(missions=int(total), reporters=int(every["player_key"].nunique()),
+                    deployments=int(every["deployment"].nunique()))
     k, d = rows["kills"].sum(), rows["deaths"].sum()
     hit, fired = rows["shots_hit"].sum(), rows["shots_fired"].sum()
-    return dict(missions=int(n), reporters=int(rows["player_key"].nunique()),
-                deployments=int(rows["deployment"].nunique()),
+    return dict(missions=int(total), reporters=int(every["player_key"].nunique()),
+                deployments=int(every["deployment"].nunique()),
                 kpm=round(k / n, 1), kd=round(k / d, 2) if d else None,
                 acc=round(100 * hit / fired, 1) if fired else None,
                 deathless=round(100 * (rows["deaths"] == 0).sum() / n, 1),

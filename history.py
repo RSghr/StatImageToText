@@ -27,9 +27,11 @@ HERE = Path(__file__).resolve().parent
 HISTORY = HERE / "history"
 STATS_FILE = HISTORY / "stats.csv"
 DEPS_FILE = HISTORY / "deployments.csv"
+EXCL_FILE = HISTORY / "excluded.csv"      # player-missions left out of the averages (browser panel -> History)
+EXCL_FIELDS = ["uid", "file", "file_hash", "slot", "player"]
 
 DEP_COLUMNS = ["uid", "keep", "date", "operation", "planet", "sector", "difficulty", "front", "success",
-               "missions_affected", "missions", "players", "kills", "deaths", "deployment", "deployment_id",
+               "missions", "players", "kills", "deaths", "deployment", "deployment_id",
                "files", "added", "updated"]
 
 
@@ -86,7 +88,7 @@ def summarize(stats: pd.DataFrame, old_deps: pd.DataFrame) -> pd.DataFrame:
             uid=uid, keep="no" if str(k).strip().lower() in ("no", "n", "0", "false", "x") else "yes",
             date=get("date"), operation=get("operation"), planet=get("planet"), sector=get("sector"),
             difficulty=get("difficulty"), front=get("front"), success=get("success"),
-            missions_affected=get("missions_affected"), missions=int(g["mission"].nunique()),
+            missions=int(g["mission"].nunique()),
             players=", ".join(players),
             kills=int(pd.to_numeric(g.get("kills"), errors="coerce").fillna(0).sum()),
             deaths=int(pd.to_numeric(g.get("deaths"), errors="coerce").fillna(0).sum()),
@@ -163,6 +165,70 @@ def _write(df: pd.DataFrame, path: Path):
     except PermissionError:
         tmp.unlink(missing_ok=True)
         raise SystemExit(f"Could not update {path} - is it open in another program? Close it and run again.")
+
+
+def read_excluded() -> list[dict]:
+    if not EXCL_FILE.exists():
+        return []
+    import csv
+    with open(EXCL_FILE, encoding="utf-8-sig", newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def excluded_keys() -> set:
+    """{(file_hash or file name, slot)} of the player-missions left out of the averages."""
+    out = set()
+    for r in read_excluded():
+        slot = str(r.get("slot", "")).split(".")[0]
+        if r.get("file_hash"):
+            out.add((r["file_hash"], slot))
+        if r.get("file"):
+            out.add((r["file"], slot))
+    return out
+
+
+def set_excluded(uid: str, file: str, slot, include: bool) -> int:
+    """Leave one player-mission out of the averages (include=False) or count it again. Returns how many are out."""
+    import csv
+    slot = str(slot).split(".")[0]
+    stats = _read(STATS_FILE)
+    row = stats[(stats["file"].astype(str) == file) & (stats["slot"].astype(str).str.split(".").str[0] == slot)] \
+        if not stats.empty else stats
+    if row.empty:
+        raise ValueError("That player / mission is not in the history.")
+    r = row.iloc[0]
+    fh = str(r.get("file_hash", "") or "")
+    fh = "" if fh == "nan" else fh
+    rows = [x for x in read_excluded() if not (x.get("file") == file and str(x.get("slot")).split(".")[0] == slot)]
+    if not include:
+        rows.append(dict(uid=uid, file=file, file_hash=fh, slot=slot, player=str(r.get("player", ""))))
+    HISTORY.mkdir(exist_ok=True)
+    with open(EXCL_FILE, "w", encoding="utf-8-sig", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=EXCL_FIELDS)
+        w.writeheader()
+        w.writerows({k: x.get(k, "") for k in EXCL_FIELDS} for x in rows)
+    return len(rows)
+
+
+def mission_grid(uid: str) -> list[dict]:
+    """The deployment's missions with the 4 player slots, for the History tab (None = empty slot)."""
+    stats = _read(STATS_FILE)
+    if stats.empty:
+        return []
+    g = stats[stats["uid"].astype(str) == str(uid)]
+    out_keys = excluded_keys()
+    missions = []
+    for (m, file), mg in g.sort_values(["mission", "slot"]).groupby(["mission", "file"], sort=False):
+        fh = str(mg["file_hash"].iloc[0]) if "file_hash" in mg.columns else ""
+        slots = [None] * 4
+        for _, r in mg.iterrows():
+            s = int(float(r["slot"]))
+            if 0 <= s < 4:
+                key = str(s)
+                slots[s] = dict(slot=s, player=str(r["player"]), kills=int(float(r.get("kills") or 0)),
+                                left_out=(fh, key) in out_keys or (str(file), key) in out_keys)
+        missions.append(dict(mission=int(float(m)), file=str(file), slots=slots))
+    return missions
 
 
 def report_rows() -> pd.DataFrame:

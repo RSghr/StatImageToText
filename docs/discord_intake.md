@@ -47,7 +47,6 @@ The text of the message can be anything readable for humans (an embed is fine).
   "enemy": "Terminids",
   "difficulty": 10,
   "success": true,
-  "crashed": "No",
   "raid": false
 }
 ```
@@ -56,8 +55,6 @@ The text of the message can be anything readable for humans (an embed is fine).
   screen after the host, left to right** – the program uses that order to match the screenshots.
 * `start`: the operation start as a Unix timestamp (seconds) – the same number as in `<t:1792876200:F>`.
 * `enemy`: `Terminids`, `Automatons` or `Illuminates`.
-* `crashed`: the stat-modal answer about crashed missions / players leaving (free text is fine, e.g. `"No"` or
-  `"Mission 2 crashed"`).
 * Anything else you add is ignored. Unknown fields can be left out.
 
 ## Important: re-upload the screenshots
@@ -104,6 +101,5 @@ async function postToInbox(webhookUrl, data, shots /* attachments from the modal
 A modal can hold a **file upload** field (Discord "File Upload" component inside a Label, `max_values: 3`,
 `file_types: ["image"]`) next to text fields:
 
-* Crashed missions / players leaving (short text, optional)
 * Stat screenshots – 3 images, one per mission
 * (optional) Player order on the screenshots, left to right, if it differs from the register's member list

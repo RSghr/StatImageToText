@@ -220,8 +220,7 @@ fixed anything, then **Publish online**.
 
 **Form fields used** (new *505th Data Deployment Registry* form): Operation Name, **Operation starting date as a
 Discord timestamp** (`<t:1734098400:F>` from sesh.fyi/timestamp – shown in Paris time, change with
-`--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, missions
-affected by crashes, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
+`--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
 A start date that isn't a valid timestamp falls back to the submission time and is reported in the Deployments sheet.
 
 Without the Sheets script it still works with files named `Host_Player2_Player3_Player4_X.png`; deployments are
@@ -315,8 +314,7 @@ Server-wide, not a leaderboard:
   registry's *Graphs* tab) and deployments per week;
 * **fronts** – share of deployments (Terminids / Automatons / Illuminates), K/D per front, table with accuracy and
   kills per mission;
-* **difficulty** mix, fun totals (missions without dying, melee kills, friendly fire…), **operation success rate**
-  and deployments hit by crashes (from the form);
+* **planets** share, fun totals (missions without dying, melee kills, friendly fire…);
 * **highlights** – Top gun, Sharpshooter, Untouchable, Stratagem hero, Guardian angel, Sample hoarder, Melee maniac,
   Stim enthusiast, Oops (friendly fire), Accident report, Deadliest deployment, Flawless execution;
 * planets (with sector, from the *PlanetsAndSectors* tab) and the deployment log.

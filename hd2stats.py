@@ -809,7 +809,6 @@ FORM_COLUMNS = {
     "operation": ["Operation Name", "Operation"],
     "notes": ["Any notes", "Notes"],
     "success": ["Operation Success", "Success"],
-    "affected": ["Were any of your missions affected", "Crashed missions", "Crashes"],
     "raid": ["Raid", "Was this a raid", "Raid deployment"],
 }
 # Columns that are read on purpose. Everything else in the form (e-mail address, suggestions...)
@@ -975,7 +974,7 @@ def load_form(path: Path | None):
                          date_problem=date_problem,
                          difficulty=get("difficulty"), front=str(get("front")).strip(),
                          planet=str(get("planet")).strip(), operation=str(get("operation")).strip(),
-                         success=str(get("success")).strip(), affected=str(get("affected")).strip(),
+                         success=str(get("success")).strip(),
                          raid=str(get("raid")).strip(),
                          form_notes=str(get("notes")).strip()))
     print(f"Form: {len(rows)} answers read from {path.name}")
@@ -1616,7 +1615,7 @@ def register_as_form(reg: dict, fr: dict | None) -> dict:
     """The register in the shape of a form answer (form fields the register doesn't have are kept)."""
     import pandas as pd
     m = dict(fr) if fr else dict(row="", ts=pd.NaT, date=pd.NaT, date_problem="", difficulty="", front="",
-                                 planet="", operation="", success="", affected="", form_notes="", names=[])
+                                 planet="", operation="", success="", form_notes="", names=[])
     if reg.get("date"):
         m["date"], m["date_problem"] = pd.Timestamp(reg["date"]), ""
     for f in ("operation", "planet", "front", "difficulty"):
@@ -1777,7 +1776,6 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
                              difficulty=fr["difficulty"] if fr else "",
                              front=fr["front"] if fr else "",
                              success=fr.get("success", "") if fr else "",
-                             missions_affected=fr.get("affected", "") if fr else "",
                              raid=fr.get("raid", "") if fr else "",
                              form_row=fr["row"] if fr else "",
                              register_id=fr.get("register_id", "") if fr else "",
@@ -1880,10 +1878,10 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
         if roster is not None and alias_name:
             roster.learn(alias_name, cs)
     df = df.merge(deps[["deployment", "deployment_id", "date", "operation", "planet", "sector", "difficulty", "front",
-                        "success", "missions_affected", "raid"]], on="deployment", how="left")
+                        "success", "raid"]], on="deployment", how="left")
 
     front_cols = ["deployment", "deployment_id", "date", "operation", "planet", "sector", "difficulty", "front", "success",
-                  "missions_affected", "raid", "mission", "file", "slot", "player", "ocr_name"]
+                  "raid", "mission", "file", "slot", "player", "ocr_name"]
     front_cols = [c for c in front_cols if c in df.columns]
     df = df[front_cols + STATS + ["flagged_stats", "notes", "name_check", "image_check"]]
     df["file_hash"] = df["file"].map(FILE_HASH).astype(object).fillna("")

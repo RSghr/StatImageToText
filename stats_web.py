@@ -361,6 +361,9 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/raids":
                 import raids
                 return self._json(raids.panel_state())
+            if url.path == "/api/history/grid":
+                import history
+                return self._json({"missions": history.mission_grid(q.get("uid", [""])[0])})
             if url.path == "/api/history":
                 return self._json({"rows": read_csv(HISTORY / "deployments.csv")})
             if url.path == "/api/discord":
@@ -466,6 +469,14 @@ class Handler(BaseHTTPRequestHandler):
                         for r in b.get("rows", []) if str(r.get("callsign", "")).strip()]
                 write_csv(PLAYERS, rows, ["callsign", "also_known_as"])
                 return self._json({"ok": True, "saved": len(rows)})
+            if path == "/api/history/exclude":
+                import history
+                try:
+                    n = history.set_excluded(str(b.get("uid", "")), str(b.get("file", "")), b.get("slot", ""),
+                                             bool(b.get("include")))
+                except ValueError as e:
+                    return self._err(str(e))
+                return self._json({"ok": True, "left_out": n})
             if path == "/api/history/keep":
                 f = HISTORY / "deployments.csv"
                 rows = read_csv(f)
