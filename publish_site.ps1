@@ -1,6 +1,6 @@
 # 505th report - publish the report online (free static hosting on Cloudflare Pages).
 # Permanent address like https://505th-stats.pages.dev - no server, no tunnel, the PC can be off.
-# Only index.html, players.html and units.html (+ a few safety headers) are uploaded; nothing else from this folder.
+# Only index.html, players.html, units.html and chart.umd.js (+ a few safety headers) are uploaded; nothing else from this folder.
 # First run: installs Node.js if needed (winget), then a browser opens to log in to your free
 # Cloudflare account once. Log of the last publish: output\publish.log
 # -Auto: no questions, no "press Enter" (used by "Run & publish"); stops with a message if the
@@ -31,7 +31,7 @@ $index = Join-Path $here 'htmlReport\index.html'
 if (-not (Test-Path -LiteralPath $index)) { $index = Join-Path $here 'output\report.html' }
 if (-not (Test-Path -LiteralPath $index)) { Fail 'No report yet - run the report first (Run report / run.bat).' }
 
-Write-Host '[1/4] Preparing the upload (index.html + players.html + units.html only)...'
+Write-Host '[1/4] Preparing the upload (index.html, players.html, units.html, chart.umd.js)...'
 if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 Copy-Item -LiteralPath $index -Destination (Join-Path $stage 'index.html')
@@ -41,6 +41,10 @@ if (Test-Path -LiteralPath $players) { Copy-Item -LiteralPath $players -Destinat
 $units = Join-Path (Split-Path -Parent $index) 'units.html'
 if (-not (Test-Path -LiteralPath $units)) { $units = Join-Path $here 'output\units.html' }
 if (Test-Path -LiteralPath $units) { Copy-Item -LiteralPath $units -Destination (Join-Path $stage 'units.html') }
+# Chart.js (the charts library the pages load); the program's own copy if the website folder has none
+$chart = Join-Path (Split-Path -Parent $index) 'chart.umd.js'
+if (-not (Test-Path -LiteralPath $chart)) { $chart = Join-Path $here 'vendor\chart.umd.js' }
+Copy-Item -LiteralPath $chart -Destination (Join-Path $stage 'chart.umd.js')
 # Safety headers + keep the page out of search engines (only people with the link find it).
 Set-Content -LiteralPath (Join-Path $stage '_headers') -Encoding ASCII -Value @'
 /*

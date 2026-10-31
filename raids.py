@@ -363,7 +363,7 @@ def page(data: dict, title: str, style: str) -> str:
     import html as H
     import json
     return PAGE.replace("{{STYLE}}", style).replace("{{TITLE}}", H.escape(title)) \
-        .replace("{{DATA}}", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+        .replace("{{DATA}}", json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/"))
 
 
 # ---------------------------------------------------------------- browser panel (Raids tab)

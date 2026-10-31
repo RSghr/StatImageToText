@@ -20,6 +20,7 @@ import argparse
 import html
 import json
 import math
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -273,7 +274,12 @@ def fmt_num(v, dec=0):
     return f"{v:,.{dec}f}"
 
 
-def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="") -> str:
+def js_data(obj) -> str:
+    """Data embedded in a page: indented JSON (readable when the page source is opened)."""
+    return json.dumps(obj, ensure_ascii=False, indent=1).replace("</", "<\\/")
+
+
+def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="", scroll=False) -> str:
     dec = dec or {}
     if df.empty:
         return '<p class="muted">No data yet.</p>'
@@ -292,8 +298,9 @@ def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="") -> str:
                     cells.append(f'<td><span class="sw f-{txt.lower()}"></span>{html.escape(txt)}</td>')
                 else:
                     cells.append(f"<td>{html.escape(txt)}</td>")
-        body.append("<tr>" + "".join(cells) + "</tr>")
-    return f'<div class="tw"><table class="{cls}"><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
+        body.append("    <tr>" + "".join(cells) + "</tr>")
+    return (f'<div class="tw{" scroll" if scroll else ""}">\n <table class="{cls}">\n  <thead><tr>{head}</tr></thead>\n'
+            f'  <tbody>\n' + "\n".join(body) + '\n  </tbody>\n </table>\n</div>')
 
 
 ICONS = {  # tiny inline line icons (24x24, stroke = currentColor)
@@ -338,15 +345,15 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
         ("Samples", fmt_num(h["samples"]), "extracted"),
         ("Reinforcements", fmt_num(h["reinforcements"]), "comrades brought back"),
     ]
-    tiles_html = "".join(f'<div class="tile"><div class="tl">{html.escape(a)}</div><div class="tv">{b}</div>'
+    tiles_html = "\n".join(f'<div class="tile"><div class="tl">{html.escape(a)}</div><div class="tv">{b}</div>'
                          f'<div class="ts">{html.escape(c)}</div></div>' for a, b, c in tiles)
-    hl_html = "".join(
-        f'<div class="hl"><div class="hi">{icon(x["icon"])}</div><div class="hb">'
-        f'<div class="ht">{html.escape(x["title"])}</div><div class="hs">{html.escape(x["sub"])}</div>'
-        f'<div class="hv"><b>{html.escape(x["value"])}</b> {html.escape(x["unit"])}</div>'
-        f'<div class="hp">{html.escape(x["player"])}</div>'
-        f'<div class="hw">{html.escape(x["where"])}{" · " + html.escape(x["date"]) if x["date"] else ""}</div>'
-        f'</div></div>' for x in hl) or '<p class="muted">No data yet.</p>'
+    hl_html = "\n".join(
+        f'<div class="hl">\n  <div class="hi">{icon(x["icon"])}</div>\n  <div class="hb">\n'
+        f'    <div class="ht">{html.escape(x["title"])}</div>\n    <div class="hs">{html.escape(x["sub"])}</div>\n'
+        f'    <div class="hv"><b>{html.escape(x["value"])}</b> {html.escape(x["unit"])}</div>\n'
+        f'    <div class="hp">{html.escape(x["player"])}</div>\n'
+        f'    <div class="hw">{html.escape(x["where"])}{" · " + html.escape(x["date"]) if x["date"] else ""}</div>\n'
+        f'  </div>\n</div>' for x in hl) or '<p class="muted">No data yet.</p>'
 
     fr_t = fr[["Front", "Deployments", "Missions", "Kills", "Casualties", "K/D", "Accuracy %", "Kills per mission",
                "Avg difficulty"]]
@@ -355,7 +362,7 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
     dep_t = dep_t.rename(columns={"front": "Front", "difficulty": "Diff.", "squad": "Squad (host first)",
                                   "missions": "Missions", "kills": "Kills", "deaths": "Casualties", "kd": "K/D",
                                   "success": "Success"})
-    dep_t = dep_t[["Date", "Operation", "Planet", "Front", "Diff.", "Success", "Squad (host first)", "Missions",
+    dep_t = dep_t[["Date", "Operation", "Planet", "Front", "Squad (host first)", "Missions",
                    "Kills", "Casualties", "K/D"]].iloc[::-1]
 
     notes = []
@@ -390,10 +397,10 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
                                                dec={"K/D": 2, "Accuracy %": 1, "Avg difficulty": 1})) \
         .replace("{{PLANET_TABLE}}", table_html(pl, num_cols=("Deployments", "Kills", "Casualties", "K/D"),
                                                 dec={"K/D": 2})) \
-        .replace("{{DEPLOY_TABLE}}", table_html(dep_t, num_cols=("Diff.", "Missions", "Kills", "Casualties", "K/D"),
-                                                dec={"K/D": 2}, cls="log")) \
+        .replace("{{DEPLOY_TABLE}}", table_html(dep_t, num_cols=("Missions", "Kills", "Casualties", "K/D"),
+                                                dec={"K/D": 2}, cls="log", scroll=True)) \
         .replace("{{NOTES}}", f'<ul class="notes">{notes_html}</ul>' if notes else "") \
-        .replace("{{DATA}}", json.dumps(data).replace("</", "<\\/")) \
+        .replace("{{DATA}}", js_data(data)) \
         .replace("{{CHARTJS}}", chart_js)
 
 
@@ -596,12 +603,12 @@ def radar_scale(cards: list[dict], min_missions: int = 3) -> dict:
 def build_players_html(title: str, cards: list[dict], chart_js: str = "") -> str:
     style = TEMPLATE[TEMPLATE.index("<style>") + 7:TEMPLATE.index("</style>")]
     return PLAYERS_TEMPLATE.replace("{{STYLE}}", style) \
-        .replace("{{RADAR}}", json.dumps(radar_scale(cards) if cards else {})) \
+        .replace("{{RADAR}}", js_data(radar_scale(cards) if cards else {})) \
         .replace("{{CHARTJS}}", chart_js) \
         .replace("{{TITLE}}", html.escape(title)) \
         .replace("{{GENERATED}}", datetime.now().strftime("%d %b %Y %H:%M")) \
         .replace("{{COUNT}}", str(len(cards))) \
-        .replace("{{DATA}}", json.dumps(cards, ensure_ascii=False).replace("</", "<\\/"))
+        .replace("{{DATA}}", js_data(cards))
 
 
 def main(argv=None):
@@ -636,7 +643,9 @@ def main(argv=None):
     ot, fr, dif, pl, wk = over_time(dep), by_front(dep), by_difficulty(dep), by_planet(dep), weekly(dep)
     hl = highlights(df, dep)
     h = headline(df, dep)
-    chart_js = (Path(__file__).resolve().parent / "vendor" / "chart.umd.js").read_text(encoding="utf-8")
+    # Chart.js is a separate file next to the pages (keeps the pages readable); copied with them everywhere
+    shutil.copyfile(Path(__file__).resolve().parent / "vendor" / "chart.umd.js", Path(a.input) / "chart.umd.js")
+    chart_js = ""
     out_html = Path(a.input) / "report.html"
     out_html.write_text(build_html(a.title, h, ot, fr, dif, pl, wk, hl, dep, chart_js), encoding="utf-8")
     write_xlsx(Path(a.input) / "report_data.xlsx", h, ot, fr, dif, pl, wk, hl, dep)
@@ -736,7 +745,8 @@ table{border-collapse:collapse;width:100%;font-size:14px}
 th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
 th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);background:var(--surface2);position:sticky;top:0}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-table.log td:nth-child(7){white-space:normal;min-width:220px}
+table.log td:nth-child(5){white-space:normal;min-width:220px}
+.tw.scroll{max-height:560px;overflow:auto}
 tbody tr:hover td{background:var(--surface2)}
 .sw{display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:2px;vertical-align:baseline}
 .f-terminids{background:var(--terminids)}.f-automatons{background:var(--automatons)}.f-illuminates{background:var(--illuminates)}
@@ -805,7 +815,7 @@ details summary{cursor:pointer;color:var(--text2);margin:8px 0}
 <footer>Generated {{GENERATED}} by the 505th Stat Department · numbers read from end-of-mission stat screens.
 Server-wide view, not a leaderboard. Charts: Chart.js (MIT).</footer>
 </main>
-<script>{{CHARTJS}}</script>
+<script src="chart.umd.js"></script>
 <script>
 const D = {{DATA}};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -965,7 +975,7 @@ PLAYERS_TEMPLATE = r"""<!doctype html>
 <footer>Generated {{GENERATED}} by the 505th Stat Department · every logged deployment, read from end-of-mission
 stat screens. Personal stats, not a leaderboard.</footer>
 </main>
-<script>{{CHARTJS}}</script>
+<script src="chart.umd.js"></script>
 <script>
 const P = {{DATA}};
 const R = {{RADAR}};

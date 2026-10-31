@@ -44,7 +44,7 @@ files move to `Archive\old_forms`) · **Run report** (live progress in the windo
 left to check) · **Who is who (players.csv)** · **Open folder / Open To_Process** · **Open report in browser** ·
 **Open player lookup** · **Open / Copy Discord message** · **History (deployments.csv)** ·
 **Add an old batch to history…** ·
-**Publish online** / **Open public page** (Cloudflare Pages, see *Putting it online*) · **Copy index.html contents** ·
+**Publish online** / **Open public page** (Cloudflare Pages, see *Putting it online*) ·
 **Reset (new batch)** with **Archive** (timestamped, nothing lost), **Delete permanently**, or **Cancel**.
 The batch files below still work if you prefer them.
 
@@ -230,13 +230,13 @@ only reads the three new ones. More options: `--no-drive` (ignore the Google Dri
 
 ## Sharing it
 * **Discord:** paste `output/discord_post.txt` (headline numbers + Highlights).
-* **Website:** every run copies `index.html`, `players.html` and `units.html` into **`htmlReport`**;
+* **Website:** every run copies `index.html`, `players.html`, `units.html` and `chart.umd.js` into **`htmlReport`**;
   **Run & publish** (or `publish_site.bat`) uploads them to Cloudflare Pages - see *Putting it online*.
 
 ## Putting it online (Cloudflare Pages, free)
 
 The pages are self-contained files, so no server is needed. `publish_site.bat` / **Publish online** uploads
-`htmlReport\index.html`, `players.html` and `units.html` (plus safety headers and a "don't index me" note for search
+`htmlReport\index.html`, `players.html`, `units.html` and `chart.umd.js` (the charts library; plus safety headers and a "don't index me" note for search
 engines) - nothing else from the folder. Static pages are free and unlimited on Cloudflare's free plan; no card needed.
 
 First time (about 5 minutes): double-click `publish_site.bat` · if Node.js is missing it offers to install it (Y) ·

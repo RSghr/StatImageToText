@@ -197,8 +197,7 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
  <div class="card"><h3>Website</h3>
   <p class="small muted" id="pubInfo"></p>
   <div class="row"><button class="b" id="publish">Publish online</button>
-   <a class="b" id="pubLink" href="#" target="_blank" rel="noopener" hidden>Open public page</a>
-   <button class="b" id="copyIndex">Copy index.html contents</button></div></div>
+   <a class="b" id="pubLink" href="#" target="_blank" rel="noopener" hidden>Open public page</a></div></div>
  <div class="card"><h3>Discord message</h3>
   <div class="row" style="margin-bottom:8px"><button class="b" id="copyDiscord">Copy</button><span class="small muted">Long posts are split: paste one part per message.</span></div>
   <textarea id="discord" readonly></textarea></div>
@@ -456,11 +455,10 @@ $('#rdDel').onclick = () => guard(async()=>{ if(!confirm('Delete the raid "'+RDc
 async function loadShare(){ await guard(async()=>{
   $('#discord').value = (await api('/api/discord')).text || 'No Discord message yet - run the report.';
   const a=$('#pubLink'); a.hidden=!ST.published; a.href=ST.published||'#';
-  $('#pubInfo').textContent = ST.published ? 'Published at '+ST.published : 'Not published yet: Publish online opens a window that uploads index.html, players.html and units.html to Cloudflare Pages.';
+  $('#pubInfo').textContent = ST.published ? 'Published at '+ST.published : 'Not published yet: Publish online opens a window that uploads index.html, players.html, units.html and chart.umd.js to Cloudflare Pages.';
 }); }
 async function copyText(t){ try{ await navigator.clipboard.writeText(t); toast('Copied to the clipboard.'); }catch(e){ toast('Copy failed - select the text and press Ctrl+C.', true); } }
 $('#copyDiscord').onclick = () => copyText($('#discord').value);
-$('#copyIndex').onclick = () => guard(async()=>{ const t=(await api('/api/index_html')).text; if(!t) throw new Error('No report yet.'); await copyText(t); });
 $('#publish').onclick = () => guard(async()=>{ await api('/api/publish',{}); toast('Publishing in a separate window.'); });
 
 // settings

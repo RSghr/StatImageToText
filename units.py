@@ -156,7 +156,7 @@ def build_pages(out_dir, title: str, df: pd.DataFrame, cards: list[dict], style:
                                           encoding="utf-8")
     data = build_units_data(df, units)
     page = UNITS_TEMPLATE.replace("{{STYLE}}", style).replace("{{CCVARS}}", unit_colors.CSS_VARS).replace("{{TITLE}}", html.escape(title)) \
-        .replace("{{CHARTJS}}", chart_js).replace("{{DATA}}", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+        .replace("{{CHARTJS}}", chart_js).replace("{{DATA}}", json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/"))
     (out_dir / "units.html").write_text(page, encoding="utf-8")
     msg = f"Companies & squads: units.html - roster {n_members} members"
     moved = [c for c in changes if c["event"] in ("moved", "joined", "left")]
@@ -206,7 +206,7 @@ td.na{color:var(--muted);font-style:italic}
 <div id="root"></div>
 <footer id="foot"></footer>
 </main>
-<script>{{CHARTJS}}</script>
+<script src="chart.umd.js"></script>
 <script>
 const D = {{DATA}};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();

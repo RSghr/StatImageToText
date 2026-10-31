@@ -9,6 +9,7 @@ if not exist htmlReport mkdir htmlReport
 copy /y "output\report.html" "htmlReport\index.html" >nul
 if exist "output\players.html" copy /y "output\players.html" "htmlReport\players.html" >nul
 if exist "output\units.html" copy /y "output\units.html" "htmlReport\units.html" >nul
+if exist "output\chart.umd.js" copy /y "output\chart.umd.js" "htmlReport\chart.umd.js" >nul
 echo.
 echo Done.
 echo   Web report:           output\report.html  (+ players.html, units.html)

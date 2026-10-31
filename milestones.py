@@ -322,11 +322,12 @@ def _cc(ms: dict, owner: str, extra: str = "") -> str:
 
 
 def _card(ms, e, new=False) -> str:
-    return (f'<div {_cc(ms, e["owner"], "hl ms-new" if new else "hl")}><div class="hi">{TROPHY}</div><div class="hb">'
-            + ('<div class="ms-tag">Milestone reached!</div>' if new else "")
-            + f'<div class="ms-own">{_esc(e["owner"])}</div><div class="ht">{_esc(e["title"])}</div>'
-            f'<div class="hw">{_esc(e["where"])}{" · " + _esc(e["date"]) if e["date"] else ""}</div>'
-            f'<div class="hp">{_esc(e["team"])}</div></div></div>')
+    return (f'<div {_cc(ms, e["owner"], "hl ms-new" if new else "hl")}>\n'
+            f'  <div class="hi">{TROPHY}</div>\n  <div class="hb">\n'
+            + ('    <div class="ms-tag">Milestone reached!</div>\n' if new else "")
+            + f'    <div class="ms-own">{_esc(e["owner"])}</div>\n    <div class="ht">{_esc(e["title"])}</div>\n'
+            f'    <div class="hw">{_esc(e["where"])}{" · " + _esc(e["date"]) if e["date"] else ""}</div>\n'
+            f'    <div class="hp">{_esc(e["team"])}</div>\n  </div>\n</div>')
 
 
 def cards_section(ms: dict) -> str:
@@ -337,7 +338,7 @@ def cards_section(ms: dict) -> str:
         parts.append(f'<div class="sub muted" style="margin:-4px 0 10px">'
                      f'{"Reached in the last " + str(RECENT_DAYS) + " days" if recent else "Latest milestones reached"}'
                      ' · the whole team gets the credit</div>')
-        parts.append('<div class="hls ms-fit" data-more="msMore">' + "".join(_card(ms, e, bool(recent)) for e in shown)
+        parts.append('<div class="hls ms-fit" data-more="msMore">' + "\n".join(_card(ms, e, bool(recent)) for e in shown)
                      + '</div>')
         total = len(recent) if recent else len(ms["events"])
         parts.append(f'<p class="muted small" id="msMore" data-total="{total}" '
@@ -351,7 +352,7 @@ def close_section(ms: dict) -> str:
     close = ms["close"][:16]
     if not close:
         return ""
-    tiles = "".join(f'<div {_cc(ms, c["owner"], "ms-ct")}><div class="ms-own">{_esc(c["owner"])}</div>'
+    tiles = "\n".join(f'<div {_cc(ms, c["owner"], "ms-ct")}><div class="ms-own">{_esc(c["owner"])}</div>'
                     f'<div class="t">{_esc(c["title"])}</div><div class="v">{c["value"]:,} / {c["target"]:,} '
                     f'({c["pct"]}%)</div><div class="bar"><i style="width:{min(100, c["pct"])}%"></i></div></div>'
                     for c in close)
@@ -365,11 +366,11 @@ def log_section(ms: dict) -> str:
     ev = ms["events"]
     if not ev:
         return ""
-    rows = "".join(f'<tr><td>{_esc(e["date"])}</td><td>{_esc(e["title"])}</td>'
+    rows = "\n".join(f'<tr><td>{_esc(e["date"])}</td><td>{_esc(e["title"])}</td>'
                    f'<td {_cc(ms, e["owner"])}><span class="sw2"></span>{_esc(e["owner"])}</td>'
                    f'<td>{_esc(e["where"])}</td><td>{_esc(e["team"])}</td></tr>' for e in ev)
     return ('<h2>Milestone log</h2><details><summary>' + f'{len(ev)} milestones reached · most recent first</summary>'
-            '<div class="tw"><table class="mlog"><thead><tr><th>Date</th><th>Milestone</th><th>Who</th>'
+            '<div class="tw scroll"><table class="mlog"><thead><tr><th>Date</th><th>Milestone</th><th>Who</th>'
             '<th>Deployment</th><th>Team</th></tr></thead><tbody>' + rows + '</tbody></table></div></details>\n')
 
 
@@ -410,7 +411,7 @@ PLAYER_CSS = """<style>
 
 
 def patch_players(page: str, ms: dict) -> str:
-    data = json.dumps(ms["players"], ensure_ascii=False).replace("</", "<\\/")
+    data = json.dumps(ms["players"], ensure_ascii=False, indent=1).replace("</", "<\\/")
     page = page.replace("</head>", PLAYER_CSS + "</head>", 1)
     page = page.replace("<script>\nconst P = ", f"<script>const MS = {data};{PLAYER_JS}</script>\n<script>\nconst P = ", 1)
     anchor = "  t.appendChild(facts); grid.appendChild(t);\n  pc.appendChild(grid);\n"

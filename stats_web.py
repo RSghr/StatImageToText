@@ -172,7 +172,7 @@ def job_run(force: bool) -> bool:
         shutil.copyfile(OUTPUT / "report.html", HTML_DIR / "index.html")
         if (OUTPUT / "players.html").exists():
             shutil.copyfile(OUTPUT / "players.html", HTML_DIR / "players.html")
-        for extra in ("units.html",):
+        for extra in ("units.html", "chart.umd.js"):
             if (OUTPUT / extra).exists():
                 shutil.copyfile(OUTPUT / extra, HTML_DIR / extra)
             else:
@@ -355,16 +355,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"rows": read_csv(HISTORY / "deployments.csv")})
             if url.path == "/api/discord":
                 return self._json({"text": DISCORD.read_text(encoding="utf-8") if DISCORD.exists() else ""})
-            if url.path == "/api/index_html":
-                f = HTML_DIR / "index.html"
-                f = f if f.exists() else OUTPUT / "report.html"
-                return self._json({"text": f.read_text(encoding="utf-8") if f.exists() else ""})
             if url.path == "/api/shot":
                 p = shot_index().get(q.get("f", [""])[0])
                 if not p or not p.exists():
                     return self._send(404, b"Not found", "text/plain")
                 ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
                 return self._send(200, p.read_bytes(), ctype)
+            if url.path == "/view/chart.umd.js":      # the charts library the pages load
+                f = OUTPUT / "chart.umd.js"
+                f = f if f.exists() else HERE / "vendor" / "chart.umd.js"
+                return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8")
             if url.path in ("/view/report.html", "/view/players.html", "/view/index.html", "/view/units.html",
                             "/view/index_beta.html", "/view/players_beta.html", "/view/units_beta.html",
                             "/view/raids_beta.html"):
