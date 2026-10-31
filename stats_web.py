@@ -15,6 +15,7 @@ import csv
 import io
 import json
 import mimetypes
+import re
 import os
 import secrets
 import shutil
@@ -159,8 +160,11 @@ def run_steps(steps: list[list[str]]) -> int:
 
 def job_run(force: bool) -> bool:
     py = python_exe()
-    has_images = count_images() > 0 or _count(drive_folder()) > 0
     JOBS.say("\n=== Run report " + time.strftime("%H:%M:%S") + " ===\n", "warn")
+    import discord_inbox
+    if discord_inbox.configured():            # new deployments posted in the Discord inbox first
+        run_steps([[py, "discord_inbox.py"]])
+    has_images = count_images() > 0 or _count(drive_folder()) > 0
     if not has_images:
         JOBS.say("No new screenshots - rebuilding the report from the history.\n")
     steps = ([[py, "hd2stats.py", "To_Process", "--recursive"] + (["--force"] if force else [])]
@@ -346,6 +350,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"bookmark": bookmark_url(self.server.server_address[1]),
                                    "fixed_port": self.server.server_address[1] == PORT,
                                    "autostart": bool(f and f.exists()), "windows": f is not None})
+            if url.path == "/api/inbox":
+                import discord_inbox as di
+                st = di.load_state()
+                return self._json({"has_token": bool(di.token()), "channel": di.channel_id(),
+                                   "deployments": len(st.get("records", {}))})
             if url.path == "/api/colors":
                 return self._json({"companies": company_colors_list()})
             if url.path == "/api/raids":
@@ -391,6 +400,29 @@ class Handler(BaseHTTPRequestHandler):
                 ok = JOBS.start("Run & publish" if b.get("publish") else "Run report",
                                 lambda: fn(bool(b.get("force"))))
                 return self._json({"ok": ok, "busy": not ok})
+            if path == "/api/inbox":
+                import discord_inbox as di
+                tok = str(b.get("token") or "").strip()
+                chan = "".join(ch for ch in str(b.get("channel") or "") if ch.isdigit())
+                if tok:
+                    if not re.fullmatch(r"[A-Za-z0-9._-]{50,100}", tok):
+                        return self._err("That doesn't look like a bot token (Developer Portal -> Bot -> Reset Token).")
+                    di.TOKEN_FILE.write_text(tok, encoding="utf-8")
+                if b.get("forget"):
+                    di.TOKEN_FILE.unlink(missing_ok=True)
+                st = load_settings()
+                if chan:
+                    st["discord_channel"] = chan
+                elif "channel" in b:
+                    st.pop("discord_channel", None)
+                save_settings(st)
+                return self._json({"ok": True, "has_token": bool(di.token()), "channel": di.channel_id()})
+            if path == "/api/inbox/test":
+                import discord_inbox as di
+                try:
+                    return self._json({"ok": True, **di.check()})
+                except di.InboxError as e:
+                    return self._err(str(e))
             if path == "/api/colors":
                 import unit_colors
                 cols = b.get("colors") or {}

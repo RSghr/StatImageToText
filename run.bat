@@ -2,6 +2,7 @@
 cd /d "%~dp0"
 set PY=python
 if exist ".venv\Scripts\python.exe" set PY=.venv\Scripts\python.exe
+%PY% discord_inbox.py
 %PY% hd2stats.py To_Process --recursive %*
 if errorlevel 1 goto end
 %PY% make_report.py -i output

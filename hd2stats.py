@@ -2151,15 +2151,25 @@ def main(argv=None):
         for f in review_dir.glob("*.png"):
             if f.name not in wanted:
                 f.unlink(missing_ok=True)
+    discord_answers = HERE / "history" / "discord_answers.csv"     # written by discord_inbox.py
+    if not discord_answers.exists() or args.no_form:
+        discord_answers = None
     if form_path:
         where_f = ("the Google Drive folder" if drive and form_path.parent.resolve() == drive.resolve()
                    else "the program folder")
         print(f"Form answers: {form_path.name}" + ("" if args.form else f"  (newest form file, found in {where_f})"))
+    elif discord_answers:
+        print("No Google Form file - using the deployments from the Discord inbox")
     elif registers:
         print(f"No form file - using the {len(registers)} Deployment Register screenshot(s)")
     else:
         print("No form file and no register screenshots - dates, fronts and operations will be missing")
     form_rows = load_form(form_path) if form_path else []
+    if discord_answers:                       # deployments from the Discord inbox, read like form answers
+        extra = load_form(discord_answers)
+        for r in extra:
+            r["row"] += 100000                # keep the row numbers apart from the Google Form's
+        form_rows += extra
 
     # register screenshots are not missions: take them out of the deployments, renumber the rest
     sources = {sh.path.name: sh.path for shots in groups.values() for sh in shots}
