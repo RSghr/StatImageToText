@@ -16,8 +16,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PAGES = {"index_beta.html": "report.html", "players_beta.html": "players.html", "units_beta.html": "units.html"}
-RAIDS_LINK = '<a class="navlink" href="raids_beta.html" style="margin-right:8px">Raids &rarr;</a>'
+PAGES = {"index_beta.html": "report.html", "players_beta.html": "players.html", "units_beta.html": "units.html",
+         "raids_beta.html": "raids.html"}
 BANNER = ('<div style="background:#c03030;color:#fff;font-weight:700;text-align:center;padding:6px 12px;'
           'letter-spacing:.06em">BETA - LOCAL PREVIEW (NOT PUBLISHED)</div>')
 
@@ -30,53 +30,24 @@ def _milestones(ctx: dict) -> dict:
     return ctx["milestones"]
 
 
-def _raids(ctx: dict) -> dict:
-    if "raids" not in ctx:
-        import raids
-        import roster
-        ctx["raids"] = raids.build(ctx["df"], ctx["dep"], roster.Units())
-    return ctx["raids"]
-
-
-def _nav(page: str) -> str:
-    return page.replace('<nav class="wrap topnav">', '<nav class="wrap topnav">' + RAIDS_LINK, 1)
-
-
 def report(page: str, ctx: dict) -> str:
-    import milestones                       # milestones section + milestone log (regiment & companies)
-    page = milestones.patch_report(page, _milestones(ctx))
-    try:                                    # raids: banner for 7 days + link to the raid page
-        import raids
-        rd = _raids(ctx)
-        if rd["recent"]:
-            page = page.replace("</head>", raids.BANNER_CSS + "</head>", 1)
-            page = page.replace('<main class="wrap">', '<main class="wrap">\n' + raids.banner(rd, "raids_beta.html"), 1)
-    except Exception as e:  # noqa: BLE001
-        print(f"Raids not added to the report: {e}")
-    return _nav(page)
+    return page                             # (milestones and raids are on the live pages now)
 
 
 def players(page: str, ctx: dict) -> str:
-    import milestones                       # personal milestones under best moments / career totals
-    return _nav(milestones.patch_players(page, _milestones(ctx)))
+    return page
 
 
 def units(page: str, ctx: dict) -> str:
-    return _nav(page)
+    return page
 
 
-def extra_pages(out_dir: Path, ctx: dict) -> list[str]:
-    """Pages that only exist in the beta."""
-    import raids
-    src = out_dir / "report.html"
-    rep = src.read_text(encoding="utf-8")
-    style = rep[rep.index("<style>") + 7:rep.index("</style>")]
-    page = raids.page(_raids(ctx), ctx.get("title", ""), style)
-    (out_dir / "raids_beta.html").write_text(_links(page), encoding="utf-8")
-    return ["raids_beta.html"]
+def raids_page(page: str, ctx: dict) -> str:
+    return page
 
 
-HOOKS = {"index_beta.html": report, "players_beta.html": players, "units_beta.html": units}
+HOOKS = {"index_beta.html": report, "players_beta.html": players, "units_beta.html": units,
+         "raids_beta.html": raids_page}
 # -----------------------------------------------------------------------------------------------------------
 
 
@@ -102,8 +73,4 @@ def build(out_dir: Path, ctx: dict | None = None) -> str:
             print(f"Beta change on {beta} failed: {e}")
         (out_dir / beta).write_text(_links(page), encoding="utf-8")
         made.append(beta)
-    try:
-        made += extra_pages(out_dir, ctx)
-    except Exception as e:  # noqa: BLE001
-        print(f"Beta-only pages failed: {e}")
     return "Beta (local only): " + (", ".join(made) if made else "nothing to copy")

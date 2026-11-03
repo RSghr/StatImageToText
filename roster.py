@@ -27,6 +27,7 @@ RANK_ORDER = ["CPT", "1LT", "2LT", "SGM", "1SG", "SSG", "SGT", "CPL", "SPC", "PF
 
 
 ORDER: dict = {}    # (company,), (company, platoon), (company, platoon, squad) -> position in the sheet
+TABS: dict = {}     # company -> name of its roster tab ("EU COMPANY 1")
 
 
 def sheet_pos(*unit) -> tuple:
@@ -78,6 +79,7 @@ def parse(raw_csv: Path) -> dict:
         if r.get("tab", "") not in tabs:
             tabs.append(r.get("tab", ""))
     ORDER.clear()
+    TABS.clear()
     for r in sorted(rows, key=lambda r: (tabs.index(r.get("tab", "")), int(r.get("row") or 0))):
         tab, fn, raw, unit = r.get("tab", ""), r.get("function", ""), r.get("callsign", ""), r.get("unit", "")
         title = r.get("company", "")
@@ -105,6 +107,7 @@ def parse(raw_csv: Path) -> dict:
                 order.append(sq)
             m.update(level="squad", platoon=pl, squad=sq,
                      detachment=f"Detachment {1 if order.index(sq) < 2 else 2}")
+        TABS.setdefault(m["company"], tab)
         for o in [(m["company"],), (m["company"], m["platoon"]), (m["company"], m["platoon"], m["squad"])]:
             ORDER.setdefault(o, len(ORDER))
         k = key(name)
@@ -137,8 +140,14 @@ def sync(members: dict, today: str | None = None) -> list[dict]:
         prev = last.get(k)
         if prev and prev["event"] != "left" and unit_tuple(prev) == unit_tuple(m) and prev.get("rank") == m["rank"]:
             continue
-        ev = "joined" if (not prev or prev["event"] == "left") else (
-            "moved" if unit_tuple(prev) != unit_tuple(m) else "rank")
+        if not prev or prev["event"] == "left":
+            ev = "joined"
+        elif unit_tuple(prev)[:2] + unit_tuple(prev)[3:] != unit_tuple(m)[:2] + unit_tuple(m)[3:]:
+            ev = "moved"
+        elif unit_tuple(prev) != unit_tuple(m):
+            ev = "reorganised"          # same squad, its detachment changed (squads reordered in the sheet)
+        else:
+            ev = "rank"
         changes.append(dict(date=FIRST_DATE if first else today, callsign=m["callsign"], rank=m["rank"],
                             company=m["company"], platoon=m["platoon"], detachment=m["detachment"],
                             squad=m["squad"], level=m["level"], event="joined" if first else ev))
@@ -154,7 +163,110 @@ def sync(members: dict, today: str | None = None) -> list[dict]:
             if new:
                 w.writeheader()
             w.writerows(changes)
+    renamed = repair_renames()
+    if renamed:                                  # a renamed unit is not a transfer: drop those "moved" lines
+        moved_away = {(r["old"], r["new"], r["date"]) for r in renamed}
+        changes = [c for c in changes if not any(c["date"] == d and c["event"] == "moved"
+                                                 and new_name in (c["company"], c["platoon"], c["squad"])
+                                                 for _, new_name, d in moved_away)]
     return changes
+
+
+UNIT_LEVELS = [("company",), ("company", "platoon"), ("company", "platoon", "squad")]
+LAST_RENAMES: list = []       # renames found by the last sync (shown in the run log)
+RENAMES = HERE / "history" / "unit_renames.csv"
+
+
+def repair_renames(log: list[dict] | None = None) -> list[dict]:
+    """A company / platoon / squad that changes name in the roster sheet shows up as everyone "moving" on the
+    same day. Detect it (most of the old unit moved to one new name, nobody left under the old name) and rename
+    the unit in the whole log instead, so past deployments follow the new name. Returns the renames done."""
+    log = read_log() if log is None else log
+    LAST_RENAMES.clear()
+    if not log:
+        return []
+    done = []
+    relabel = sum(1 for e in log if e["event"] == "moved")
+    for fields in UNIT_LEVELS:
+        f = fields[-1]
+        hist: dict = {}
+        for i, e in enumerate(log):
+            hist.setdefault(key(e["callsign"]), []).append(i)
+        pairs: dict = {}          # (date, old unit, new unit) -> callsigns that "moved"
+        before: dict = {}         # (date, old unit) -> members in it just before that date
+        dates = sorted({e["date"] for e in log if e["event"] == "moved"})
+        for idxs in hist.values():
+            for j in range(1, len(idxs)):
+                a, b = log[idxs[j - 1]], log[idxs[j]]
+                if b["event"] != "moved" or a["event"] == "left" or not a.get(f):
+                    continue
+                ua, ub = tuple(a.get(x, "") for x in fields), tuple(b.get(x, "") for x in fields)
+                if ua[:-1] == ub[:-1] and ua[-1] != ub[-1] and ub[-1]:
+                    pairs.setdefault((b["date"], ua, ub), set()).add(key(b["callsign"]))
+        if not pairs:
+            continue
+        for d in dates:
+            for idxs in hist.values():
+                prev = [log[i] for i in idxs if log[i]["date"] < d]
+                if prev and prev[-1]["event"] != "left" and prev[-1].get(f):
+                    u = tuple(prev[-1].get(x, "") for x in fields)
+                    before[(d, u)] = before.get((d, u), 0) + 1
+        for (d, ua, ub), who in sorted(pairs.items(), key=lambda kv: -len(kv[1])):
+            n_before = before.get((d, ua), 0)
+            still = sum(1 for idxs in hist.values()
+                        if (cur := [log[i] for i in idxs if log[i]["date"] <= d]) and cur[-1]["event"] != "left"
+                        and tuple(cur[-1].get(x, "") for x in fields) == ua)
+            if not n_before or len(who) < max(2, 0.5 * n_before) or still:
+                continue
+            for e in log:                                   # rename the unit in everything before that day
+                if e["date"] < d and tuple(e.get(x, "") for x in fields) == ua:
+                    e[f] = ub[-1]
+            done.append(dict(date=d, level=f, old=ua[-1], new=ub[-1], parent=" / ".join(ub[:-1]), members=len(who)))
+        # moves that are now identical to the line before them are not changes any more
+        keep, last = [], {}
+        for e in log:
+            k = key(e["callsign"])
+            p = last.get(k)
+            if (e["event"] == "moved" and p and p["event"] != "left" and unit_tuple(p) == unit_tuple(e)
+                    and p.get("rank") == e.get("rank")):
+                continue
+            if (e["event"] == "moved" and p and p["event"] != "left"
+                    and unit_tuple(p)[:2] + unit_tuple(p)[3:] == unit_tuple(e)[:2] + unit_tuple(e)[3:]):
+                e["event"] = "reorganised"                 # only the detachment changed: not a transfer
+            keep.append(e)
+            last[k] = e
+        log[:] = keep
+    relabel -= sum(1 for e in log if e["event"] == "moved")
+    if relabel and not done:
+        with open(LOG, "w", encoding="utf-8-sig", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=LOG_FIELDS)
+            w.writeheader()
+            w.writerows(log)
+    LAST_RENAMES.extend(done)
+    if done:
+        with open(LOG, "w", encoding="utf-8-sig", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=LOG_FIELDS)
+            w.writeheader()
+            w.writerows(log)
+        new_file = not RENAMES.exists()
+        with open(RENAMES, "a", encoding="utf-8-sig" if new_file else "utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=["date", "level", "old", "new", "parent", "members"])
+            if new_file:
+                w.writeheader()
+            w.writerows(done)
+        try:                                                # keep the company colour with the new name
+            import unit_colors
+            cols = unit_colors.saved()
+            changed = False
+            for r in done:
+                if r["level"] == "company" and r["old"] in cols and r["new"] not in cols:
+                    cols[r["new"]] = cols.pop(r["old"])
+                    changed = True
+            if changed:
+                unit_colors.save(cols)
+        except Exception:  # noqa: BLE001
+            pass
+    return done
 
 
 def fix_company_names(log: list[dict], members: dict) -> list[dict]:

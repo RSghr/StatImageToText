@@ -15,6 +15,7 @@ import csv
 import io
 import json
 import mimetypes
+import re
 import os
 import secrets
 import shutil
@@ -34,9 +35,59 @@ from ui_core import (ARCHIVE, CORR, DISCORD, HERE, HISTORY, HTML_DIR, IMG_EXT, O
                      import_paths, items_to_clear, last_report, load_settings, open_corrections, open_path,
                      python_exe, save_settings)
 
-TOKEN = secrets.token_urlsafe(24)
 UPLOADS = HERE / ".uploads"
 PAGE = HERE / "stats_web.html"
+PORT = 8765                         # fixed, so the panel address can be bookmarked
+KEY_FILE = HERE / ".panel_key"      # the panel's secret key (kept, so a bookmark keeps working)
+STARTUP_NAME = "505th Stats Panel.vbs"
+
+
+def panel_key() -> str:
+    try:
+        k = KEY_FILE.read_text(encoding="utf-8").strip()
+        if len(k) >= 24:
+            return k
+    except OSError:
+        pass
+    k = secrets.token_urlsafe(24)
+    try:
+        KEY_FILE.write_text(k, encoding="utf-8")
+    except OSError:
+        pass
+    return k
+
+
+TOKEN = panel_key()
+SERVER = None                       # set in main(), used by "Stop the panel"
+
+
+def bookmark_url(port: int | None = None) -> str:
+    return f"http://127.0.0.1:{port or PORT}/?k={TOKEN}"
+
+
+def startup_file() -> Path | None:
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return None
+    return Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / STARTUP_NAME
+
+
+def set_autostart(on: bool) -> bool:
+    """Start the panel (hidden, no window) when Windows starts: a small .vbs in the Startup folder."""
+    f = startup_file()
+    if f is None:
+        raise ValueError("Only available on Windows.")
+    if not on:
+        f.unlink(missing_ok=True)
+        return False
+    py = Path(python_exe())
+    pyw = py.with_name("pythonw.exe")
+    exe = pyw if pyw.exists() else py
+    q = lambda s: '""' + str(s).replace('"', '') + '""'     # noqa: E731 - VBScript quoting
+    f.write_text('Set sh = CreateObject("WScript.Shell")\r\n'
+                 f'sh.CurrentDirectory = "{str(HERE).replace(chr(34), "")}"\r\n'
+                 f'sh.Run "{q(exe)} {q(HERE / "stats_web.py")} --background", 0, False\r\n', encoding="utf-8")
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -109,8 +160,11 @@ def run_steps(steps: list[list[str]]) -> int:
 
 def job_run(force: bool) -> bool:
     py = python_exe()
-    has_images = count_images() > 0 or _count(drive_folder()) > 0
     JOBS.say("\n=== Run report " + time.strftime("%H:%M:%S") + " ===\n", "warn")
+    import discord_inbox
+    if discord_inbox.configured():            # new deployments posted in the Discord inbox first
+        run_steps([[py, "discord_inbox.py"]])
+    has_images = count_images() > 0 or _count(drive_folder()) > 0
     if not has_images:
         JOBS.say("No new screenshots - rebuilding the report from the history.\n")
     steps = ([[py, "hd2stats.py", "To_Process", "--recursive"] + (["--force"] if force else [])]
@@ -122,7 +176,7 @@ def job_run(force: bool) -> bool:
         shutil.copyfile(OUTPUT / "report.html", HTML_DIR / "index.html")
         if (OUTPUT / "players.html").exists():
             shutil.copyfile(OUTPUT / "players.html", HTML_DIR / "players.html")
-        for extra in ("units.html",):
+        for extra in ("units.html", "raids.html", "chart.umd.js"):
             if (OUTPUT / extra).exists():
                 shutil.copyfile(OUTPUT / extra, HTML_DIR / extra)
             else:
@@ -266,12 +320,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(403, b"Forbidden", "text/plain")
         url = urllib.parse.urlsplit(self.path)
         q = urllib.parse.parse_qs(url.query)
+        if url.path == "/ping":                   # "is the panel already running?" (no data, no key)
+            return self._send(200, b"505th-panel", "text/plain")
         if url.path == "/":
             if q.get("k", [""])[0] == TOKEN:      # first visit from the launcher: remember the key, clean URL
                 return self._send(303, b"", "text/plain", {
-                    "Location": "/", "Set-Cookie": f"k505={TOKEN}; HttpOnly; SameSite=Strict; Path=/"})
+                    "Location": "/", "Set-Cookie": f"k505={TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000"})
             if not self._cookie_ok():
-                return self._send(403, "Open the panel with Stats Web UI.bat (this page needs its key).".encode(),
+                return self._send(403, "Open the panel with Stats Web UI.bat or your bookmark (this page needs its key).".encode(),
                                   "text/plain; charset=utf-8")
             return self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         if not self._cookie_ok():
@@ -289,24 +345,64 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"rows": read_csv(CORR)})
             if url.path == "/api/players":
                 return self._json({"rows": read_csv(PLAYERS)})
+            if url.path == "/api/panel":
+                f = startup_file()
+                return self._json({"bookmark": bookmark_url(self.server.server_address[1]),
+                                   "fixed_port": self.server.server_address[1] == PORT,
+                                   "autostart": bool(f and f.exists()), "windows": f is not None})
+            if url.path == "/api/inbox":
+                import discord_inbox as di
+                recs = di.load_state().get("records", {}).values()
+                n = sum(1 for r in recs if di.counted(r))
+                return self._json({"has_token": bool(di.token()), "channel": di.channel_id(),
+                                   "deployments": n, "waiting": len(recs) - n})
+            if url.path == "/api/colors":
+                return self._json({"companies": company_colors_list()})
             if url.path == "/api/raids":
                 import raids
                 return self._json(raids.panel_state())
+            if url.path == "/api/history/grid":
+                import history
+                return self._json({"missions": history.mission_grid(q.get("uid", [""])[0])})
             if url.path == "/api/history":
-                return self._json({"rows": read_csv(HISTORY / "deployments.csv")})
+                import history
+                edits = history.read_edits()
+                rows = read_csv(HISTORY / "deployments.csv")
+                for r in rows:                    # show the fixed values; keep the originals for "undo"
+                    e = edits.get(r.get("uid", ""), {})
+                    r["edited"] = sorted(k for k in e if not k.startswith("player:") and k != "names_ok")
+                    r["names_flag"] = "" if e.get("names_ok") else r.get("check", "")
+                    r["renamed"] = {k[7:]: v for k, v in e.items() if k.startswith("player:")}
+                    if r["renamed"]:
+                        r["orig_players"] = r.get("players", "")
+                        r["players"] = ", ".join(r["renamed"].get(p.strip(), p.strip())
+                                                 for p in r.get("players", "").split(",") if p.strip())
+                    for f, v in e.items():
+                        if f.startswith("player:") or f == "names_ok":
+                            continue
+                        r["orig_" + f] = r.get(f, "")
+                        r[f] = v
+                import raids
+                try:
+                    from players import Roster
+                    known = sorted(set(Roster().order), key=str.lower)
+                except Exception:  # noqa: BLE001
+                    known = []
+                return self._json({"rows": rows, "planets": raids.planets(), "fronts": history.FRONT_NAMES,
+                                   "callsigns": known})
             if url.path == "/api/discord":
                 return self._json({"text": DISCORD.read_text(encoding="utf-8") if DISCORD.exists() else ""})
-            if url.path == "/api/index_html":
-                f = HTML_DIR / "index.html"
-                f = f if f.exists() else OUTPUT / "report.html"
-                return self._json({"text": f.read_text(encoding="utf-8") if f.exists() else ""})
             if url.path == "/api/shot":
                 p = shot_index().get(q.get("f", [""])[0])
                 if not p or not p.exists():
                     return self._send(404, b"Not found", "text/plain")
                 ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
                 return self._send(200, p.read_bytes(), ctype)
-            if url.path in ("/view/report.html", "/view/players.html", "/view/index.html", "/view/units.html",
+            if url.path == "/view/chart.umd.js":      # the charts library the pages load
+                f = OUTPUT / "chart.umd.js"
+                f = f if f.exists() else HERE / "vendor" / "chart.umd.js"
+                return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8")
+            if url.path in ("/view/report.html", "/view/players.html", "/view/index.html", "/view/units.html", "/view/raids.html",
                             "/view/index_beta.html", "/view/players_beta.html", "/view/units_beta.html",
                             "/view/raids_beta.html"):
                 name = url.path.rsplit("/", 1)[1]
@@ -332,6 +428,48 @@ class Handler(BaseHTTPRequestHandler):
                 ok = JOBS.start("Run & publish" if b.get("publish") else "Run report",
                                 lambda: fn(bool(b.get("force"))))
                 return self._json({"ok": ok, "busy": not ok})
+            if path == "/api/inbox":
+                import discord_inbox as di
+                tok = str(b.get("token") or "").strip()
+                chan = "".join(ch for ch in str(b.get("channel") or "") if ch.isdigit())
+                if tok:
+                    if not re.fullmatch(r"[A-Za-z0-9._-]{50,100}", tok):
+                        return self._err("That doesn't look like a bot token (Developer Portal -> Bot -> Reset Token).")
+                    di.TOKEN_FILE.write_text(tok, encoding="utf-8")
+                if b.get("forget"):
+                    di.TOKEN_FILE.unlink(missing_ok=True)
+                st = load_settings()
+                if chan:
+                    st["discord_channel"] = chan
+                elif "channel" in b:
+                    st.pop("discord_channel", None)
+                save_settings(st)
+                return self._json({"ok": True, "has_token": bool(di.token()), "channel": di.channel_id()})
+            if path == "/api/inbox/test":
+                import discord_inbox as di
+                try:
+                    return self._json({"ok": True, **di.check()})
+                except di.InboxError as e:
+                    return self._err(str(e))
+            if path == "/api/colors":
+                import unit_colors
+                cols = b.get("colors") or {}
+                bad = [k for k, v in cols.items() if v and not unit_colors.clean_hex(v)]
+                if bad:
+                    return self._err("Not a colour code: " + ", ".join(f"{k} = {cols[k]}" for k in bad)
+                                     + " (use 6 hex digits, e.g. #003478)")
+                unit_colors.save({k: v for k, v in cols.items() if v})
+                return self._json({"ok": True, "companies": company_colors_list()})
+            if path == "/api/panel/autostart":
+                try:
+                    return self._json({"ok": True, "autostart": set_autostart(bool(b.get("on")))})
+                except (ValueError, OSError) as e:
+                    return self._err(str(e))
+            if path == "/api/panel/stop":
+                if JOBS.running:
+                    return self._err("Wait until the current job has finished.")
+                threading.Timer(0.3, lambda: SERVER and SERVER.shutdown()).start()
+                return self._json({"ok": True})
             if path.startswith("/api/raids/"):
                 import raids
                 try:
@@ -355,6 +493,21 @@ class Handler(BaseHTTPRequestHandler):
                         for r in b.get("rows", []) if str(r.get("callsign", "")).strip()]
                 write_csv(PLAYERS, rows, ["callsign", "also_known_as"])
                 return self._json({"ok": True, "saved": len(rows)})
+            if path == "/api/history/exclude":
+                import history
+                try:
+                    n = history.set_excluded(str(b.get("uid", "")), str(b.get("file", "")), b.get("slot", ""),
+                                             bool(b.get("include")))
+                except ValueError as e:
+                    return self._err(str(e))
+                return self._json({"ok": True, "left_out": n})
+            if path == "/api/history/edit":
+                import history
+                try:
+                    cur = history.set_edits(str(b.get("uid", "")), b.get("values") or {})
+                except ValueError as e:
+                    return self._err(str(e))
+                return self._json({"ok": True, "edited": sorted(cur)})
             if path == "/api/history/keep":
                 f = HISTORY / "deployments.csv"
                 rows = read_csv(f)
@@ -508,20 +661,61 @@ def free_port(preferred: int = 8765) -> int:
     return 0
 
 
+def company_colors_list() -> list[dict]:
+    """Companies of the roster (sheet order) with their tab and colour, for Settings -> Company colours."""
+    import roster
+    import unit_colors
+    comps = []
+    raw = roster.find_raw([drive_folder() or ""])
+    if raw:
+        try:
+            members = roster.parse(raw)
+            comps = list(dict.fromkeys(m["company"] for m in members.values() if m["company"]))
+        except Exception:  # noqa: BLE001
+            comps = []
+    if not comps:
+        units = roster.Units()
+        comps = sorted({m["company"] for m in units.current() if m["company"]}, key=lambda c: roster.sheet_pos(c))
+    cols = unit_colors.company_colors(comps, roster.TABS)
+    saved = unit_colors.saved()
+    return [dict(name=c, tab=roster.TABS.get(c, ""), color=cols[c], saved=c in saved) for c in comps]
+
+
+def already_running(port: int) -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping", timeout=1.5) as r:
+            return r.read(32) == b"505th-panel"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def main():
+    global SERVER
     try:
         sys.stdout.reconfigure(errors="replace")
     except Exception:  # noqa: BLE001
         pass
+    background = "--background" in sys.argv
+    if already_running(PORT):                    # one panel only: just open it
+        if not background:
+            print("The panel is already running - opening it in the browser.")
+            webbrowser.open(bookmark_url())
+        return
     shutil.rmtree(UPLOADS, ignore_errors=True)
-    port = free_port()
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError:
+        srv = ThreadingHTTPServer(("127.0.0.1", free_port(PORT + 1)), Handler)
+        print(f"Port {PORT} is used by another program - using {srv.server_address[1]} this time "
+              "(the bookmark only works on 8765).")
+    SERVER = srv
     port = srv.server_address[1]
-    url = f"http://127.0.0.1:{port}/?k={TOKEN}"
+    url = bookmark_url(port)
     print("505th Stat Department - browser panel")
-    print(f"Open: {url}")
-    print("Only this PC can reach it. Close this window to stop the panel.")
-    if "--no-browser" not in sys.argv:
+    print(f"Open / bookmark: {url}")
+    print("Only this PC can reach it. Close this window (or Settings -> Stop the panel) to stop it.")
+    if not background and "--no-browser" not in sys.argv:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()

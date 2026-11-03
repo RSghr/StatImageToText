@@ -202,7 +202,6 @@ class App(BaseTk):
         g3 = group(2, "3. Website, history & reset")
         ttk.Button(g3, text="Publish online", style="Accent.TButton", command=self.publish).pack(fill="x")
         ttk.Button(g3, text="Open public page", command=self.open_public).pack(fill="x", pady=(4, 0))
-        ttk.Button(g3, text="Copy index.html contents", command=self.copy_index).pack(fill="x", pady=(8, 0))
         ttk.Button(g3, text="Open htmlReport folder", command=lambda: open_path(HTML_DIR)).pack(fill="x", pady=(4, 0))
         ttk.Button(g3, text="History (deployments.csv)", command=self.open_history).pack(fill="x", pady=(8, 0))
         ttk.Button(g3, text="Add an old batch to history...", command=self.import_batch).pack(fill="x", pady=(4, 0))
@@ -340,8 +339,11 @@ class App(BaseTk):
         py = python_exe()
         env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
         flags = subprocess.CREATE_NO_WINDOW if sys.platform.startswith("win") else 0
-        steps = ([[py, "hd2stats.py", "To_Process", "--recursive"] + (["--force"] if force else [])]
-                 if read_images else []) + [[py, "make_report.py", "-i", "output"]]
+        import discord_inbox
+        inbox = discord_inbox.configured()      # new deployments posted in the Discord inbox first
+        steps = ([[py, "discord_inbox.py"]] if inbox else []) + \
+                ([[py, "hd2stats.py", "To_Process", "--recursive"] + (["--force"] if force else [])]
+                 if read_images or inbox else []) + [[py, "make_report.py", "-i", "output"]]
         for cmd in steps:
             try:
                 p = subprocess.Popen(cmd, cwd=HERE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
@@ -360,7 +362,7 @@ class App(BaseTk):
             shutil.copyfile(OUTPUT / "report.html", HTML_DIR / "index.html")
             if (OUTPUT / "players.html").exists():
                 shutil.copyfile(OUTPUT / "players.html", HTML_DIR / "players.html")
-            for extra in ("units.html",):
+            for extra in ("units.html", "raids.html", "chart.umd.js"):
                 if (OUTPUT / extra).exists():
                     shutil.copyfile(OUTPUT / extra, HTML_DIR / extra)
                 else:
@@ -492,18 +494,6 @@ class App(BaseTk):
         self.update()
         extra = f" (message 1 of {len(parts)} - open the file for the others)" if len(parts) > 1 else ""
         self.write(f"Discord message copied to the clipboard{extra}. Paste it in Discord with Ctrl+V.\n", "ok")
-
-    def copy_index(self):
-        f = HTML_DIR / "index.html"
-        if not f.exists():
-            f = OUTPUT / "report.html"
-        if not f.exists():
-            messagebox.showinfo("Website", "No report yet - click Run report first.")
-            return
-        self.clipboard_clear()
-        self.clipboard_append(f.read_text(encoding="utf-8"))
-        self.update()
-        self.write(f"Contents of {f.name} ({f.stat().st_size // 1024} KB) copied to the clipboard.\n", "ok")
 
     def publish(self):
         if not ((HTML_DIR / "index.html").exists() or (OUTPUT / "report.html").exists()):

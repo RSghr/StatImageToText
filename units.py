@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 import roster
+import unit_colors
 
 MIN_MISSIONS = 10
 
@@ -37,13 +38,19 @@ def assign(df: pd.DataFrame, units: "roster.Units") -> pd.DataFrame:
 
 
 def group_stats(rows: pd.DataFrame) -> dict:
+    total = len(rows)
+    if not total:
+        return dict(missions=0, reporters=0)
+    every = rows
+    rows = rows[rows["in_avg"]] if "in_avg" in rows.columns else rows   # per mission: without the ones set aside
     n = len(rows)
     if not n:
-        return dict(missions=0, reporters=0)
+        return dict(missions=int(total), reporters=int(every["player_key"].nunique()),
+                    deployments=int(every["deployment"].nunique()))
     k, d = rows["kills"].sum(), rows["deaths"].sum()
     hit, fired = rows["shots_hit"].sum(), rows["shots_fired"].sum()
-    return dict(missions=int(n), reporters=int(rows["player_key"].nunique()),
-                deployments=int(rows["deployment"].nunique()),
+    return dict(missions=int(total), reporters=int(every["player_key"].nunique()),
+                deployments=int(every["deployment"].nunique()),
                 kpm=round(k / n, 1), kd=round(k / d, 2) if d else None,
                 acc=round(100 * hit / fired, 1) if fired else None,
                 deathless=round(100 * (rows["deaths"] == 0).sum() / n, 1),
@@ -74,11 +81,13 @@ def build_units_data(df: pd.DataFrame, units: "roster.Units") -> dict:
         return sorted(members, key=lambda m: (order.get(m.get("rank", ""), 99), m["callsign"].lower()))
 
     companies = []
-    for comp in sorted({m["company"] for m in cur}, key=lambda c: roster.sheet_pos(c)):
+    comps = sorted({m["company"] for m in cur}, key=lambda c: roster.sheet_pos(c))
+    cols = unit_colors.company_colors(comps, roster.TABS)
+    for comp in comps:
         rows = a[a["company"] == comp]
         rr = a_recent[a_recent["company"] == comp]
         mem = members_of(company=comp)
-        tab = next((m.get("company_tab", "") for m in mem if m.get("company_tab")), "")
+        tab = roster.TABS.get(comp) or next((m.get("company_tab", "") for m in mem if m.get("company_tab")), "")
         lead = [m for m in mem if m["level"] == "company"]
         platoons = []
         for pl in sorted({m["platoon"] for m in mem if m["platoon"]}, key=lambda p: roster.sheet_pos(comp, p)):
@@ -97,7 +106,7 @@ def build_units_data(df: pd.DataFrame, units: "roster.Units") -> dict:
                                  **part(pm, prow, rr[rr["platoon"] == pl]), **group_stats(prow), squads=squads))
         top = (rows.groupby("player").size().sort_values(ascending=False).head(3) if len(rows) else pd.Series(dtype=int))
         fronts = rows.drop_duplicates("deployment")["front"].value_counts().to_dict() if len(rows) else {}
-        companies.append(dict(name=comp, tab=tab, leaders=[f'{m["rank"]} {m["callsign"]}'.strip() for m in lead],
+        companies.append(dict(name=comp, tab=tab, color=cols.get(comp, "#77766F"), leaders=[f'{m["rank"]} {m["callsign"]}'.strip() for m in lead],
                               **part(mem, rows, rr), **group_stats(rows), platoons=platoons,
                               active=[dict(name=k, missions=int(v)) for k, v in top.items()],
                               fronts={k: int(v) for k, v in fronts.items()}))
@@ -144,15 +153,21 @@ def build_pages(out_dir, title: str, df: pd.DataFrame, cards: list[dict], style:
         return "Companies & squads: no roster_raw.csv yet (answers spreadsheet: 505th Stats -> Write roster_raw.csv now)"
     rep = out_dir / "report.html"
     rep.write_text(add_units_link(rep.read_text(encoding="utf-8"), "report"), encoding="utf-8")
-    ucards = [dict(c, unit=unit_line(units, c["name"])) for c in cards]
+    cols = unit_colors.current()
+    ucards = []
+    for c in cards:
+        u = units.unit_at(c["name"], None)
+        ucards.append(dict(c, unit=unit_line(units, c["name"]), unit_color=cols.get((u or {}).get("company", ""), "")))
     (out_dir / "players.html").write_text(add_units_link(players_builder(title, ucards, chart_js), "players"),
                                           encoding="utf-8")
     data = build_units_data(df, units)
-    page = UNITS_TEMPLATE.replace("{{STYLE}}", style).replace("{{TITLE}}", html.escape(title)) \
-        .replace("{{CHARTJS}}", chart_js).replace("{{DATA}}", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+    page = UNITS_TEMPLATE.replace("{{STYLE}}", style).replace("{{CCVARS}}", unit_colors.CSS_VARS).replace("{{TITLE}}", html.escape(title)) \
+        .replace("{{CHARTJS}}", chart_js).replace("{{DATA}}", json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/"))
     (out_dir / "units.html").write_text(page, encoding="utf-8")
     msg = f"Companies & squads: units.html - roster {n_members} members"
     moved = [c for c in changes if c["event"] in ("moved", "joined", "left")]
+    for r in roster.LAST_RENAMES:
+        print(f"Roster: {r['level']} renamed {r['old']} -> {r['new']} ({r['members']} members) - past deployments follow")
     if moved and changes[0]["date"] != roster.FIRST_DATE:
         msg += f", {len(moved)} change(s) logged today (" + ", ".join(
             f'{c["callsign"]} {c["event"]}' for c in moved[:6]) + ("..." if len(moved) > 6 else "") + ")"
@@ -167,7 +182,12 @@ UNITS_TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Companies &amp; squads - {{TITLE}}</title>
 <style>{{STYLE}}
+{{CCVARS}}
 .co{margin-top:26px}
+.co.cc{border-top:4px solid var(--ccl);padding-top:12px}
+.co.cc .tile{border-left-color:var(--ccl)}
+.co.cc .bar i{background:var(--ccl)}
+.csw{display:inline-block;width:14px;height:14px;background:var(--ccl);margin-right:8px;vertical-align:baseline}
 .small{font-size:13px}
 .coh{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px}
 .coh h3{margin:0;font-size:clamp(22px,3.4vw,30px);font-weight:800}
@@ -194,7 +214,7 @@ td.na{color:var(--muted);font-style:italic}
 <div id="root"></div>
 <footer id="foot"></footer>
 </main>
-<script>{{CHARTJS}}</script>
+<script src="chart.umd.js"></script>
 <script>
 const D = {{DATA}};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -204,10 +224,15 @@ const AXES = ['Kills','Accuracy','Melee kills','Deaths','Deathless','Stratagems'
 function tile(a,b,c){ const t=el('div','tile'); t.append(el('div','tl',a), el('div','tv',b)); if(c) t.append(el('div','ts',c)); return t; }
 function pct(a,b){ return b ? Math.round(100*a/b)+'%' : '-'; }
 const enough = u => (u.missions||0) >= D.min_missions;
+const DARK = () => (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
+function lighten(hex){ // same as the CSS: 35% white on dark backgrounds, so a dark blue stays visible
+  if(!/^#[0-9a-f]{6}$/i.test(hex) || !DARK()) return hex;
+  const n=parseInt(hex.slice(1),16), m=c=>Math.round(c*0.65+255*0.35);
+  return '#'+[n>>16,(n>>8)&255,n&255].map(m).map(x=>x.toString(16).padStart(2,'0')).join(''); }
 function radar(cv, u){
   const reg = D.regiment.radar || [];
   const ratio = (v,i) => (v==null||reg[i]==null) ? null : (reg[i]>0 ? v/reg[i] : (v>0?2:1));
-  const me = css('--s1'), avg = css('--muted');
+  const me = lighten(u.color || css('--s1')), avg = css('--muted');
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
   const narrow = cv.parentNode.clientWidth < 460;
   const SHORT = {'Friendly fire dmg':'FF dmg','Melee kills':'Melee','Stratagems':'Strat.','Stims used':'Stims','Accuracy':'Acc.','Deathless':'No death'};
@@ -235,7 +260,8 @@ document.getElementById('intro').textContent = D.companies.length
   ? `Reporting = roster members with at least one logged mission. Units with fewer than ${D.min_missions} logged missions show "not enough data yet". Missions count for the unit the player was in on that day.`
   : 'No roster yet: in the answers spreadsheet use 505th Stats -> Write roster_raw.csv now, then Run report.';
 D.companies.forEach(c=>{
-  const s = el('section','co'); const h = el('div','coh'); h.append(el('h3',null,c.name));
+  const s = el('section','co cc'); s.style.setProperty('--cc', c.color); const h = el('div','coh');
+  const hh = el('h3'); hh.append(el('span','csw'), document.createTextNode(c.name)); h.append(hh);
   h.append(el('span','muted', [c.tab, c.leaders.length ? 'led by '+c.leaders.join(', ') : ''].filter(Boolean).join(' · '))); s.append(h);
   const t = el('div','tiles6');
   t.append(tile('Members', fmt(c.members), 'on the roster'), tile('Reporting', pct(c.reporting,c.members), `${c.reporting} have logged missions`),

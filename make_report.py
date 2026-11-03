@@ -20,6 +20,7 @@ import argparse
 import html
 import json
 import math
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -51,7 +52,7 @@ def load_df(df: pd.DataFrame) -> pd.DataFrame:
             seen[dep] = n
             names[uid] = dep if n == 1 else f"{dep} ({n})"
         df["deployment"] = df["uid"].map(names)
-    for c in ("date", "operation", "planet", "sector", "difficulty", "front", "success", "missions_affected", "raid"):
+    for c in ("date", "operation", "planet", "sector", "difficulty", "front", "success", "raid"):
         if c not in df.columns:
             df[c] = None
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
@@ -69,6 +70,16 @@ def load_df(df: pd.DataFrame) -> pd.DataFrame:
     except Exception:
         pass
     df["player_key"] = df["player"].str.lower().str.replace(r"[^a-z0-9]", "", regex=True)
+    # player-missions left out of the averages in the browser panel (History): still in the totals
+    try:
+        import history
+        keys = history.excluded_keys()
+    except Exception:  # noqa: BLE001
+        keys = set()
+    slot = df["slot"].astype(str).str.split(".").str[0] if "slot" in df.columns else pd.Series("", index=df.index)
+    fh = df["file_hash"].astype(object).fillna("").astype(str) if "file_hash" in df.columns else pd.Series("", index=df.index)
+    fl = df["file"].astype(object).fillna("").astype(str) if "file" in df.columns else pd.Series("", index=df.index)
+    df["in_avg"] = [not ((h, s) in keys or (f, s) in keys) for h, s, f in zip(fh, slot, fl)]
     for c in SUMMABLE:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
     df["accuracy"] = pd.to_numeric(df["accuracy"], errors="coerce")
@@ -79,14 +90,19 @@ def deployments(df: pd.DataFrame) -> pd.DataFrame:
     g = df.groupby("deployment", sort=False)
     dep = g.agg(date=("date", "first"), operation=("operation", "first"), planet=("planet", "first"),
                 sector=("sector", "first"), difficulty=("difficulty", "first"), front=("front", "first"),
-                success=("success", "first"), missions_affected=("missions_affected", "first"),
+                success=("success", "first"),
                 missions=("mission", "nunique"), **{c: (c, "sum") for c in SUMMABLE})
     dep["squad"] = g["player"].apply(lambda s: ", ".join(dict.fromkeys(s)))
     dep["kd"] = dep["kills"] / dep["deaths"].where(dep["deaths"] > 0)
     dep["success"] = dep["success"].astype(object).fillna("").astype(str).str.strip().replace({"nan": ""})
-    dep["missions_affected"] = dep["missions_affected"].astype(object).fillna("").astype(str).str.strip().replace({"nan": ""})
     dep = dep.reset_index().sort_values(["date", "deployment"], na_position="last").reset_index(drop=True)
     return dep
+
+
+def avg_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Rows used for averages, records and "per mission" numbers: without the player-missions left out in the
+    browser panel (History). Totals use every row."""
+    return df[df["in_avg"]] if "in_avg" in df.columns else df
 
 
 def ratio(a, b):
@@ -179,7 +195,7 @@ def weekly(dep: pd.DataFrame) -> pd.DataFrame:
 
 def highlights(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
     """Fun outliers: one card each. Mission-level unless stated."""
-    rows = df.copy()
+    rows = avg_rows(df).copy()           # (player-missions left out in the panel aren't records either)
     rows["where"] = rows["operation"].astype(object).fillna("").astype(str)
     rows.loc[rows["where"].isin(["", "nan"]), "where"] = rows["deployment"]
     out = []
@@ -236,7 +252,7 @@ def headline(df: pd.DataFrame, dep: pd.DataFrame) -> dict:
         shots=t["shots_fired"], stratagems=t["stratagems_used"], samples=t["samples_extracted"],
         reinforcements=t["times_reinforcing"], stims=t["stims_used"], ff=t["friendly_fire_damage"],
         melee=t["melee_kills"], accidentals=t["accidentals"],
-        deathless=int((df["deaths"] == 0).sum()), player_missions=len(df),
+        deathless=int((avg_rows(df)["deaths"] == 0).sum()), player_missions=len(avg_rows(df)),
         first=dated.min().strftime("%d %b %Y") if len(dated) else "",
         last=dated.max().strftime("%d %b %Y") if len(dated) else "",
         undated=int(dep["date"].isna().sum()), unknown_front=int((dep["front"] == "Unknown").sum()),
@@ -244,7 +260,6 @@ def headline(df: pd.DataFrame, dep: pd.DataFrame) -> dict:
         flagged=int(df.get("flagged_stats", pd.Series(dtype=str)).astype(object).fillna("").astype(str).ne("").sum()),
         success_known=int(dep["success"].str.lower().isin(["yes", "no"]).sum()),
         success_yes=int((dep["success"].str.lower() == "yes").sum()),
-        crash_hit=int((dep["missions_affected"] != "").sum()),
         first_ts=_epoch(dated.min()) if len(dated) else None,
         last_ts=_epoch(dated.max()) if len(dated) else None,
     )
@@ -273,7 +288,12 @@ def fmt_num(v, dec=0):
     return f"{v:,.{dec}f}"
 
 
-def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="") -> str:
+def js_data(obj) -> str:
+    """Data embedded in a page: indented JSON (readable when the page source is opened)."""
+    return json.dumps(obj, ensure_ascii=False, indent=1).replace("</", "<\\/")
+
+
+def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="", scroll=False) -> str:
     dec = dec or {}
     if df.empty:
         return '<p class="muted">No data yet.</p>'
@@ -292,8 +312,9 @@ def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="") -> str:
                     cells.append(f'<td><span class="sw f-{txt.lower()}"></span>{html.escape(txt)}</td>')
                 else:
                     cells.append(f"<td>{html.escape(txt)}</td>")
-        body.append("<tr>" + "".join(cells) + "</tr>")
-    return f'<div class="tw"><table class="{cls}"><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
+        body.append("    <tr>" + "".join(cells) + "</tr>")
+    return (f'<div class="tw{" scroll" if scroll else ""}">\n <table class="{cls}">\n  <thead><tr>{head}</tr></thead>\n'
+            f'  <tbody>\n' + "\n".join(body) + '\n  </tbody>\n </table>\n</div>')
 
 
 ICONS = {  # tiny inline line icons (24x24, stroke = currentColor)
@@ -338,15 +359,15 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
         ("Samples", fmt_num(h["samples"]), "extracted"),
         ("Reinforcements", fmt_num(h["reinforcements"]), "comrades brought back"),
     ]
-    tiles_html = "".join(f'<div class="tile"><div class="tl">{html.escape(a)}</div><div class="tv">{b}</div>'
+    tiles_html = "\n".join(f'<div class="tile"><div class="tl">{html.escape(a)}</div><div class="tv">{b}</div>'
                          f'<div class="ts">{html.escape(c)}</div></div>' for a, b, c in tiles)
-    hl_html = "".join(
-        f'<div class="hl"><div class="hi">{icon(x["icon"])}</div><div class="hb">'
-        f'<div class="ht">{html.escape(x["title"])}</div><div class="hs">{html.escape(x["sub"])}</div>'
-        f'<div class="hv"><b>{html.escape(x["value"])}</b> {html.escape(x["unit"])}</div>'
-        f'<div class="hp">{html.escape(x["player"])}</div>'
-        f'<div class="hw">{html.escape(x["where"])}{" · " + html.escape(x["date"]) if x["date"] else ""}</div>'
-        f'</div></div>' for x in hl) or '<p class="muted">No data yet.</p>'
+    hl_html = "\n".join(
+        f'<div class="hl">\n  <div class="hi">{icon(x["icon"])}</div>\n  <div class="hb">\n'
+        f'    <div class="ht">{html.escape(x["title"])}</div>\n    <div class="hs">{html.escape(x["sub"])}</div>\n'
+        f'    <div class="hv"><b>{html.escape(x["value"])}</b> {html.escape(x["unit"])}</div>\n'
+        f'    <div class="hp">{html.escape(x["player"])}</div>\n'
+        f'    <div class="hw">{html.escape(x["where"])}{" · " + html.escape(x["date"]) if x["date"] else ""}</div>\n'
+        f'  </div>\n</div>' for x in hl) or '<p class="muted">No data yet.</p>'
 
     fr_t = fr[["Front", "Deployments", "Missions", "Kills", "Casualties", "K/D", "Accuracy %", "Kills per mission",
                "Avg difficulty"]]
@@ -355,7 +376,7 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
     dep_t = dep_t.rename(columns={"front": "Front", "difficulty": "Diff.", "squad": "Squad (host first)",
                                   "missions": "Missions", "kills": "Kills", "deaths": "Casualties", "kd": "K/D",
                                   "success": "Success"})
-    dep_t = dep_t[["Date", "Operation", "Planet", "Front", "Diff.", "Success", "Squad (host first)", "Missions",
+    dep_t = dep_t[["Date", "Operation", "Planet", "Front", "Squad (host first)", "Missions",
                    "Kills", "Casualties", "K/D"]].iloc[::-1]
 
     notes = []
@@ -370,14 +391,7 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
         notes.append(f'{h["flagged"]} player row(s) still have a value marked for review in HD2_stats.xlsx.')
     notes_html = "".join(f"<li>{html.escape(n)}</li>" for n in notes)
     period = f'{h["first"]} - {h["last"]}' if h["first"] else "no dated deployments yet"
-    success_fact = ""
-    if h["success_known"]:
-        pct = round(100 * h["success_yes"] / h["success_known"])
-        success_fact = (f'<div class="fact"><b>{pct}% ({h["success_yes"]}/{h["success_known"]})</b>'
-                        f'<span class="muted">operations completed (all main objectives)</span></div>')
-    if h["crash_hit"]:
-        success_fact += (f'<div class="fact"><b>{h["crash_hit"]}</b>'
-                         f'<span class="muted">deployments hit by crashes or players leaving</span></div>')
+    success_fact = ""          # (no "operations completed": only completed operations are logged)
     deathless_pct = 100 * h["deathless"] / h["player_missions"] if h["player_missions"] else 0
 
     return TEMPLATE.replace("{{TITLE}}", html.escape(title)) \
@@ -394,10 +408,10 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
                                                dec={"K/D": 2, "Accuracy %": 1, "Avg difficulty": 1})) \
         .replace("{{PLANET_TABLE}}", table_html(pl, num_cols=("Deployments", "Kills", "Casualties", "K/D"),
                                                 dec={"K/D": 2})) \
-        .replace("{{DEPLOY_TABLE}}", table_html(dep_t, num_cols=("Diff.", "Missions", "Kills", "Casualties", "K/D"),
-                                                dec={"K/D": 2}, cls="log")) \
+        .replace("{{DEPLOY_TABLE}}", table_html(dep_t, num_cols=("Missions", "Kills", "Casualties", "K/D"),
+                                                dec={"K/D": 2}, cls="log", scroll=True)) \
         .replace("{{NOTES}}", f'<ul class="notes">{notes_html}</ul>' if notes else "") \
-        .replace("{{DATA}}", json.dumps(data).replace("</", "<\\/")) \
+        .replace("{{DATA}}", js_data(data)) \
         .replace("{{CHARTJS}}", chart_js)
 
 
@@ -412,7 +426,6 @@ def write_xlsx(path: Path, h, ot, fr, dif, pl, wk, hl, dep):
         ("Friendly fire damage", h["ff"]), ("Accidentals", h["accidentals"]),
         ("Missions without dying (player-missions)", h["deathless"]),
         ("Operations completed", f'{h["success_yes"]}/{h["success_known"]}' if h["success_known"] else ""),
-        ("Deployments hit by crashes / players leaving", h["crash_hit"]),
     ], columns=["Metric", "Value"])
     ot = ot.copy()
     for c in ot.columns:
@@ -524,13 +537,16 @@ def player_cards(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
             op = r["operation"] if isinstance(r["operation"], str) and r["operation"] not in ("", "nan") else r["deployment"]
             return dict(op=str(op), mission=int(r["mission"]),
                         date=r["date"].strftime("%d %b %Y") if pd.notna(r["date"]) else "")
+        ga = avg_rows(g)                     # per-mission numbers leave out the player-missions set aside
+        ta = {c: int(ga[c].sum()) for c in SUMMABLE}
+        na = len(ga)
         moments = []
         for col, label, unit in (("kills", "Most kills in a mission", "kills"),
                                  ("stims_used", "Most stims in a mission", "stims"),
                                  ("stratagems_used", "Most stratagems in a mission", "stratagems"),
                                  ("times_reinforcing", "Most reinforcements in a mission", "reinforces")):
-            if len(g) and g[col].max() > 0:
-                r = g.loc[g[col].idxmax()]
+            if na and ga[col].max() > 0:
+                r = ga.loc[ga[col].idxmax()]
                 moments.append(dict(label=label, value=int(r[col]), unit=unit, **where(r)))
         recent = []
         for d in sorted(deps, key=lambda d: (dinfo.at[d, "date"] if d in dinfo.index and pd.notna(dinfo.at[d, "date"])
@@ -557,18 +573,18 @@ def player_cards(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
             shots=t["shots_fired"], stims=t["stims_used"], stratagems=t["stratagems_used"],
             samples=t["samples_extracted"], reinforcing=t["times_reinforcing"], melee=t["melee_kills"],
             ff=t["friendly_fire_damage"], accidentals=t["accidentals"],
-            deathless=int((g["deaths"] == 0).sum()),
-            kills_per_mission=round(t["kills"] / len(g), 1) if len(g) else 0,
+            deathless=int((ga["deaths"] == 0).sum()), missions_avg=na,
+            kills_per_mission=round(ta["kills"] / na, 1) if na else 0,
             avg_diff=round(float(di["difficulty"].mean()), 1) if len(di) and di["difficulty"].notna().any() else None,
             first=dates.min().strftime("%d %b %Y") if len(dates) else "",
             last=dates.max().strftime("%d %b %Y") if len(dates) else "",
             favourite=fav, fronts=fronts, moments=moments,
-            radar=[round(t["kills"] / len(g), 2),
-                   round(100 * ratio(t["shots_hit"], t["shots_fired"]), 2) if t["shots_fired"] else None,
-                   round(t["melee_kills"] / len(g), 2), round(t["deaths"] / len(g), 2),
-                   round(100 * int((g["deaths"] == 0).sum()) / len(g), 2),
-                   round(t["stratagems_used"] / len(g), 2), round(t["stims_used"] / len(g), 2),
-                   round(t["friendly_fire_damage"] / len(g), 2)],
+            radar=[round(ta["kills"] / na, 2),
+                   round(100 * ratio(ta["shots_hit"], ta["shots_fired"]), 2) if ta["shots_fired"] else None,
+                   round(ta["melee_kills"] / na, 2), round(ta["deaths"] / na, 2),
+                   round(100 * int((ga["deaths"] == 0).sum()) / na, 2),
+                   round(ta["stratagems_used"] / na, 2), round(ta["stims_used"] / na, 2),
+                   round(ta["friendly_fire_damage"] / na, 2)] if na else [None] * 8,
             mates=[dict(name=str(name_of.get(k, k)), key=k, games=n, pct=round(100 * n / len(deps)))
                    for k, n in top],
             recent=recent))
@@ -600,12 +616,12 @@ def radar_scale(cards: list[dict], min_missions: int = 3) -> dict:
 def build_players_html(title: str, cards: list[dict], chart_js: str = "") -> str:
     style = TEMPLATE[TEMPLATE.index("<style>") + 7:TEMPLATE.index("</style>")]
     return PLAYERS_TEMPLATE.replace("{{STYLE}}", style) \
-        .replace("{{RADAR}}", json.dumps(radar_scale(cards) if cards else {})) \
+        .replace("{{RADAR}}", js_data(radar_scale(cards) if cards else {})) \
         .replace("{{CHARTJS}}", chart_js) \
         .replace("{{TITLE}}", html.escape(title)) \
         .replace("{{GENERATED}}", datetime.now().strftime("%d %b %Y %H:%M")) \
         .replace("{{COUNT}}", str(len(cards))) \
-        .replace("{{DATA}}", json.dumps(cards, ensure_ascii=False).replace("</", "<\\/"))
+        .replace("{{DATA}}", js_data(cards))
 
 
 def main(argv=None):
@@ -640,7 +656,9 @@ def main(argv=None):
     ot, fr, dif, pl, wk = over_time(dep), by_front(dep), by_difficulty(dep), by_planet(dep), weekly(dep)
     hl = highlights(df, dep)
     h = headline(df, dep)
-    chart_js = (Path(__file__).resolve().parent / "vendor" / "chart.umd.js").read_text(encoding="utf-8")
+    # Chart.js is a separate file next to the pages (keeps the pages readable); copied with them everywhere
+    shutil.copyfile(Path(__file__).resolve().parent / "vendor" / "chart.umd.js", Path(a.input) / "chart.umd.js")
+    chart_js = ""
     out_html = Path(a.input) / "report.html"
     out_html.write_text(build_html(a.title, h, ot, fr, dif, pl, wk, hl, dep, chart_js), encoding="utf-8")
     write_xlsx(Path(a.input) / "report_data.xlsx", h, ot, fr, dif, pl, wk, hl, dep)
@@ -658,10 +676,31 @@ def main(argv=None):
                                 [st.get("drive_folder", "")]))
     except Exception as e:  # noqa: BLE001 - the unit page must never break the normal report
         print(f"Companies & squads page not built: {e}")
+    # milestones (targets in milestones.csv): report section + milestone log, personal milestones on player cards
+    ms = None
+    try:
+        import milestones
+        ms = milestones.compute(df, dep)
+        for name, patch in (("report.html", milestones.patch_report), ("players.html", milestones.patch_players)):
+            f = Path(a.input) / name
+            f.write_text(patch(f.read_text(encoding="utf-8"), ms), encoding="utf-8")
+        print(f"Milestones: {len(ms['events'])} reached ({len(ms['recent'])} in the last {milestones.RECENT_DAYS} days), "
+              f"{len(ms['close'])} almost there")
+    except Exception as e:  # noqa: BLE001 - milestones must never break the normal report
+        print(f"Milestones not added: {e}")
+    # raids (declared in the browser panel -> Raids; raids.csv): raids.html + link + banner after a raid
+    try:
+        import raids
+        print(raids.build_page(Path(a.input), df, dep, a.title))
+    except Exception as e:  # noqa: BLE001 - raids must never break the normal report
+        print(f"Raids page not built: {e}")
     # BETA section: local test copies (index_beta / players_beta / units_beta), never published - see beta.py
     try:
         import beta
-        print(beta.build(Path(a.input), dict(df=df, dep=dep, cards=cards, title=a.title, chart_js=chart_js)))
+        ctx = dict(df=df, dep=dep, cards=cards, title=a.title, chart_js=chart_js)
+        if ms is not None:
+            ctx["milestones"] = ms
+        print(beta.build(Path(a.input), ctx))
     except Exception as e:  # noqa: BLE001 - the beta must never break the normal report
         print(f"Beta pages not built: {e}")
     msgs = discord_text(a.title, h, fr, hl, a.discord_limit)
@@ -725,7 +764,8 @@ table{border-collapse:collapse;width:100%;font-size:14px}
 th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--grid);white-space:nowrap}
 th{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text2);background:var(--surface2);position:sticky;top:0}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-table.log td:nth-child(7){white-space:normal;min-width:220px}
+table.log td:nth-child(5){white-space:normal;min-width:220px}
+.tw.scroll{max-height:560px;overflow:auto}
 tbody tr:hover td{background:var(--surface2)}
 .sw{display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:2px;vertical-align:baseline}
 .f-terminids{background:var(--terminids)}.f-automatons{background:var(--automatons)}.f-illuminates{background:var(--illuminates)}
@@ -782,11 +822,11 @@ details summary{cursor:pointer;color:var(--text2);margin:8px 0}
   </div></div>
 </div>
 
-<h2>Highlights</h2>
-<div class="hls">{{HIGHLIGHTS}}</div>
-
 <h2>Planets</h2>
 {{PLANET_TABLE}}
+
+<h2>Highlights</h2>
+<div class="hls">{{HIGHLIGHTS}}</div>
 
 <h2>Deployment log</h2>
 <details open><summary>Most recent first</summary>{{DEPLOY_TABLE}}</details>
@@ -794,7 +834,7 @@ details summary{cursor:pointer;color:var(--text2);margin:8px 0}
 <footer>Generated {{GENERATED}} by the 505th Stat Department · numbers read from end-of-mission stat screens.
 Server-wide view, not a leaderboard. Charts: Chart.js (MIT).</footer>
 </main>
-<script>{{CHARTJS}}</script>
+<script src="chart.umd.js"></script>
 <script>
 const D = {{DATA}};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -899,6 +939,10 @@ PLAYERS_TEMPLATE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Player lookup - {{TITLE}}</title>
 <style>{{STYLE}}
+:root{--cc-mix:35%}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--cc-mix:0%}}
+:root[data-theme="light"]{--cc-mix:0%}
+.cc{--ccl:color-mix(in srgb, var(--cc) calc(100% - var(--cc-mix)), white)}
 .search{display:flex;gap:8px;margin-top:22px}
 .search input{flex:1;min-width:0;font:inherit;font-size:18px;padding:12px 14px;background:var(--surface);color:var(--text);
  border:2px solid var(--line);outline:none}
@@ -950,7 +994,7 @@ PLAYERS_TEMPLATE = r"""<!doctype html>
 <footer>Generated {{GENERATED}} by the 505th Stat Department · every logged deployment, read from end-of-mission
 stat screens. Personal stats, not a leaderboard.</footer>
 </main>
-<script>{{CHARTJS}}</script>
+<script src="chart.umd.js"></script>
 <script>
 const P = {{DATA}};
 const R = {{RADAR}};
@@ -1028,13 +1072,15 @@ function show(key, push){
   if(p.favourite) bits.push('favourite front: '+p.favourite);
   if(p.avg_diff!=null) bits.push('average difficulty '+p.avg_diff);
   pc.appendChild(el('div','psub',bits.join(' · ')));
-  if(p.unit){ const u=el('div','psub',p.unit); u.style.color='var(--text)'; u.style.fontWeight='700'; pc.appendChild(u); }
+  if(p.unit){ const u=el('div','psub'); u.style.color='var(--text)'; u.style.fontWeight='700';
+    if(p.unit_color){ const d=el('span','cc'); d.style.setProperty('--cc', p.unit_color); d.style.cssText+=';display:inline-block;width:12px;height:12px;margin-right:8px;background:var(--ccl)'; u.appendChild(d); }
+    u.appendChild(document.createTextNode(p.unit)); pc.appendChild(u); }
   const tiles = el('div','tiles6');
   tiles.appendChild(tile('Deployments', fmt(p.deployments), fmt(p.missions)+' missions'));
   tiles.appendChild(tile('Kills', fmt(p.kills), p.kills_per_mission+' per mission'));
   tiles.appendChild(tile('Casualties', fmt(p.deaths), 'K/D '+(p.kd==null?'-':p.kd.toFixed(2))));
   tiles.appendChild(tile('Accuracy', p.accuracy==null?'-':p.accuracy.toFixed(1)+'%', fmt(p.shots)+' shots fired'));
-  tiles.appendChild(tile('Never died', fmt(p.deathless), 'of '+fmt(p.missions)+' missions'));
+  tiles.appendChild(tile('Never died', fmt(p.deathless), 'of '+fmt(p.missions_avg ?? p.missions)+' missions'));
   tiles.appendChild(tile('Stratagems', fmt(p.stratagems), fmt(p.reinforcing)+' reinforcements'));
   pc.appendChild(tiles);
   pc.appendChild(profileCard(p));

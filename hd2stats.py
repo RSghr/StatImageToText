@@ -809,7 +809,6 @@ FORM_COLUMNS = {
     "operation": ["Operation Name", "Operation"],
     "notes": ["Any notes", "Notes"],
     "success": ["Operation Success", "Success"],
-    "affected": ["Were any of your missions affected", "Crashed missions", "Crashes"],
     "raid": ["Raid", "Was this a raid", "Raid deployment"],
 }
 # Columns that are read on purpose. Everything else in the form (e-mail address, suggestions...)
@@ -975,7 +974,7 @@ def load_form(path: Path | None):
                          date_problem=date_problem,
                          difficulty=get("difficulty"), front=str(get("front")).strip(),
                          planet=str(get("planet")).strip(), operation=str(get("operation")).strip(),
-                         success=str(get("success")).strip(), affected=str(get("affected")).strip(),
+                         success=str(get("success")).strip(),
                          raid=str(get("raid")).strip(),
                          form_notes=str(get("notes")).strip()))
     print(f"Form: {len(rows)} answers read from {path.name}")
@@ -1199,6 +1198,9 @@ def trust_form_order() -> bool:
     return bool(load_settings().get("trust_form_order", True))
 
 
+ORDER_CONFLICT: list = []   # filled by name_players: why the form's player order was not trusted
+
+
 def name_players(mrows, callsigns: list[str], roster=None, uploader: str = "",
                  trust_order: bool | None = None) -> tuple[dict, dict]:
     """Map the rows of one mission (one per panel) to callsigns -> ({row index: callsign}, {row index: how}).
@@ -1244,6 +1246,17 @@ def name_players(mrows, callsigns: list[str], roster=None, uploader: str = "",
             used.add(norm_cs(calls[j]))
     if trust_order is None:
         trust_order = trust_form_order()
+    # Safety net: players recognised on screen sitting where the form's order says someone else is ->
+    # the order can't be trusted for this mission; the panels left are asked instead of placed by position.
+    ORDER_CONFLICT.clear()
+    if calls and len(mrows) == len(calls) and len(out) < len(mrows):   # only matters if some panels are unknown
+        pos = {i: k for k, i in enumerate(sorted(mrows.index, key=lambda i: mrows.at[i, "slot"]))}
+        for i, cs in out.items():
+            k = next((j for j, c in enumerate(calls) if norm_cs(c) == norm_cs(cs)), None)
+            if k is not None and k != pos[i]:
+                ORDER_CONFLICT.append(f"{cs} is panel {pos[i] + 1}, the form lists them {k + 1}")
+        if ORDER_CONFLICT:
+            trust_order = False
     if trust_order and calls and len(mrows) == len(calls):
         for k, i in enumerate(sorted(mrows.index, key=lambda i: mrows.at[i, "slot"])):
             if i in out or norm_cs(calls[k]) in used:
@@ -1616,7 +1629,7 @@ def register_as_form(reg: dict, fr: dict | None) -> dict:
     """The register in the shape of a form answer (form fields the register doesn't have are kept)."""
     import pandas as pd
     m = dict(fr) if fr else dict(row="", ts=pd.NaT, date=pd.NaT, date_problem="", difficulty="", front="",
-                                 planet="", operation="", success="", affected="", form_notes="", names=[])
+                                 planet="", operation="", success="", form_notes="", names=[])
     if reg.get("date"):
         m["date"], m["date_problem"] = pd.Timestamp(reg["date"]), ""
     for f in ("operation", "planet", "front", "difficulty"):
@@ -1673,6 +1686,37 @@ def assign_names(file_names: list[str], ocr_names: list[str]) -> list[str]:
     return out
 
 
+def first_player_doubtful(bgr, lay) -> int:
+    try:
+        _, flags, _, _ = read_player(bgr, lay, 0, 1)
+    except Exception:  # noqa: BLE001
+        return len(STATS)
+    return len(flags)
+
+
+def best_row_fit(bgr, lay, n_variants: int):
+    """Safety net: if most values of the first player can't be read, the stat rows were probably placed one or
+    two lines off. Try the layout shifted by -2..+2 rows and keep one that reads cleanly."""
+    import dataclasses
+
+    def doubtful(l):
+        try:
+            _, flags, _, _ = read_player(bgr, l, 0, 1)
+        except Exception:  # noqa: BLE001
+            return len(STATS)
+        return len(flags)
+    base = doubtful(lay)
+    if base < 3:                                   # reads fine (the normal case: no extra work)
+        return lay
+    best, best_n = lay, base
+    for k in (-2, -1, 1, 2):
+        cand = dataclasses.replace(lay, y0=lay.y0 + k * lay.dy)
+        n = doubtful(cand)
+        if n < best_n:
+            best, best_n = cand, n
+    return best if best_n <= 1 else lay            # only switch to a layout that reads (almost) cleanly
+
+
 def process_image(shot: Shot, n_variants: int, review_dir: Path | None):
     t0 = time.time()
     bgr = load_bgr(shot.path)
@@ -1695,6 +1739,25 @@ def process_image(shot: Shot, n_variants: int, review_dir: Path | None):
         bgr = cv2.warpAffine(bgr, M, (w_, h_), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
         image_notes.append(f"image was tilted {lay.angle:.1f} degrees, straightened")
         lay = detect_layout(bgr)
+    lay = best_row_fit(bgr, lay, n_variants)       # rows found a line too high / low? (happens on some PCs)
+    if first_player_doubtful(bgr, lay) >= 3:       # still unreadable: find the layout again on a resized copy
+        best = (first_player_doubtful(bgr, lay), bgr, lay)
+        for f, pad in ((1.5, 0), (0.75, 0), (1.0, 40)):
+            try:
+                img = cv2.resize(bgr, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC if f > 1 else cv2.INTER_AREA)
+                if pad:
+                    img = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+                l2 = best_row_fit(img, detect_layout(img), n_variants)
+            except Exception:  # noqa: BLE001
+                continue
+            n = first_player_doubtful(img, l2)
+            if n < best[0]:
+                best = (n, img, l2)
+            if n <= 1:
+                break
+        if best[1] is not bgr:
+            image_notes.append("layout found again on a resized copy of the screenshot")
+        _, bgr, lay = best
     n_panels = len(lay.lefts)
     ocr_names = [read_name(bgr, lay, p) for p in range(n_panels)]
     names = assign_names(shot.names, ocr_names) if len(shot.names) > 1 else [""] * n_panels
@@ -1777,7 +1840,6 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
                              difficulty=fr["difficulty"] if fr else "",
                              front=fr["front"] if fr else "",
                              success=fr.get("success", "") if fr else "",
-                             missions_affected=fr.get("affected", "") if fr else "",
                              raid=fr.get("raid", "") if fr else "",
                              form_row=fr["row"] if fr else "",
                              register_id=fr.get("register_id", "") if fr else "",
@@ -1804,9 +1866,12 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
         up_of = {sh.path.name: sh.uploader for sh in groups.get(key, [])}
         sure: dict = defaultdict(Counter)     # slot -> callsigns recognised for certain in this deployment
         guessed = []                          # (row, callsign, in-game name) placed by panel order only
+        conflicts = []                        # missions where the form's order contradicts the names on screen
         for _, m in df[df["deployment"] == key].groupby("mission"):
             uploader = next((up_of.get(f, "") for f in m["file"] if up_of.get(f)), "")
             names, how = name_players(m, fr["names"], roster, uploader)
+            if any(h == "order" for h in how.values()):   # some players could only be guessed: worth a look
+                conflicts += [c for c in ORDER_CONFLICT if c not in conflicts]
             if roster is not None:                # panels the form doesn't explain: players.csv
                 for idx in m.index:
                     if idx not in names:
@@ -1824,6 +1889,12 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
                     sure[int(df.at[idx, "slot"])][cs] += 1
                     if how[idx] in ("name", "last") and roster is not None:
                         roster.learn(ocr, cs)
+        if conflicts:                             # flag the whole deployment for a look in the History tab
+            msg = "player order in the form doesn't match the names on screen (" + " / ".join(conflicts) + ")"
+            for idx in df.index[df["deployment"] == key]:
+                was = df.at[idx, "name_check"]
+                was = "" if pd.isna(was) else str(was)
+                df.at[idx, "name_check"] = "; ".join(x for x in (was, msg) if x)
         # players keep their panel for the whole deployment: a guess in one mission takes the player
         # recognised for certain in the same panel in the other missions; only the rest is asked (once)
         for idx, cs, ocr in guessed:
@@ -1880,10 +1951,10 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
         if roster is not None and alias_name:
             roster.learn(alias_name, cs)
     df = df.merge(deps[["deployment", "deployment_id", "date", "operation", "planet", "sector", "difficulty", "front",
-                        "success", "missions_affected", "raid"]], on="deployment", how="left")
+                        "success", "raid"]], on="deployment", how="left")
 
     front_cols = ["deployment", "deployment_id", "date", "operation", "planet", "sector", "difficulty", "front", "success",
-                  "missions_affected", "raid", "mission", "file", "slot", "player", "ocr_name"]
+                  "raid", "mission", "file", "slot", "player", "ocr_name"]
     front_cols = [c for c in front_cols if c in df.columns]
     df = df[front_cols + STATS + ["flagged_stats", "notes", "name_check", "image_check"]]
     df["file_hash"] = df["file"].map(FILE_HASH).astype(object).fillna("")
@@ -2151,15 +2222,25 @@ def main(argv=None):
         for f in review_dir.glob("*.png"):
             if f.name not in wanted:
                 f.unlink(missing_ok=True)
+    discord_answers = HERE / "history" / "discord_answers.csv"     # written by discord_inbox.py
+    if not discord_answers.exists() or args.no_form:
+        discord_answers = None
     if form_path:
         where_f = ("the Google Drive folder" if drive and form_path.parent.resolve() == drive.resolve()
                    else "the program folder")
         print(f"Form answers: {form_path.name}" + ("" if args.form else f"  (newest form file, found in {where_f})"))
+    elif discord_answers:
+        print("No Google Form file - using the deployments from the Discord inbox")
     elif registers:
         print(f"No form file - using the {len(registers)} Deployment Register screenshot(s)")
     else:
         print("No form file and no register screenshots - dates, fronts and operations will be missing")
     form_rows = load_form(form_path) if form_path else []
+    if discord_answers:                       # deployments from the Discord inbox, read like form answers
+        extra = load_form(discord_answers)
+        for r in extra:
+            r["row"] += 100000                # keep the row numbers apart from the Google Form's
+        form_rows += extra
 
     # register screenshots are not missions: take them out of the deployments, renumber the rest
     sources = {sh.path.name: sh.path for shots in groups.values() for sh in shots}

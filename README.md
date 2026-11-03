@@ -44,7 +44,7 @@ files move to `Archive\old_forms`) · **Run report** (live progress in the windo
 left to check) · **Who is who (players.csv)** · **Open folder / Open To_Process** · **Open report in browser** ·
 **Open player lookup** · **Open / Copy Discord message** · **History (deployments.csv)** ·
 **Add an old batch to history…** ·
-**Publish online** / **Open public page** (Cloudflare Pages, see *Putting it online*) · **Copy index.html contents** ·
+**Publish online** / **Open public page** (Cloudflare Pages, see *Putting it online*) ·
 **Reset (new batch)** with **Archive** (timestamped, nothing lost), **Delete permanently**, or **Cancel**.
 The batch files below still work if you prefer them.
 
@@ -60,10 +60,25 @@ opens in your browser. Close the console window to stop it.
   answers and **Save & run report**. No spreadsheet program needed.
 * **Who is who** – edit `players.csv` (search, add, remove).
 * **History** – every deployment; untick *Count* to leave one out; add an old batch (stats.csv).
+  A **⚠ check names** badge means the player order typed in the form contradicts the names read on screen
+  (e.g. two players swapped) and some players could only be guessed: open *Edit*, look at the screenshots,
+  fix the names if needed and **Save** – that marks the deployment as reviewed.
 * **Share** – open the report / player lookup, Publish online, copy the Discord message or index.html.
 * **Settings & reset** – the Google Drive folder, open folders in Windows, Reset (archive / delete).
 
 `Stats UI.bat` (the desktop window) still works; both use the same files.
+
+### Bookmark it
+The panel always uses the same address on this PC. In *Settings & reset -> Bookmark the panel*, drag the button to
+your bookmarks bar (or copy the link). Tick **Start the panel with Windows** so it runs in the background (no window)
+from the moment you log in - the bookmark then always works. **Stop the panel** is on the same card; double-clicking
+`Stats Web UI.bat` while it already runs just opens it. The link holds the panel's key (`.panel_key`): it only works
+on this PC, but don't share it.
+
+### Company colours
+Each company has its own colour on the report (milestones), the companies page, player cards and raids; the regiment
+stays yellow. Change them in *Settings & reset -> Company colours* (type a hex code like `#003478`, Save, Run report).
+Saved in `settings.json`.
 
 ## Every deployment is kept: the history
 
@@ -145,20 +160,39 @@ Every run also writes `output/index_beta.html`, `players_beta.html` and `units_b
 pages with a red BETA banner, **never copied to htmlReport and never published** (browser panel: Share → Beta).
 Future changes are tried there first (hooks in `beta.py`), then moved into the normal pages once they look right.
 
-**Now in beta: milestones.** Targets are in `milestones.csv` (edit freely: level, stat, faction, steps, title).
+**Milestones (live since Oct 2026).** Targets are in `milestones.csv` (edit freely: level, stat, faction, steps, title). Best edited in Notepad; if Excel
+saves it with its own separators, the program puts the lines back together.
 Regiment and company milestones show on the report: "Milestone reached!" cards at the top for 7 days, otherwise
 the latest ones above the highlights, plus "Almost there" (80%+ of the next target) and a milestone log.
 Personal milestones are on the player card. Everything is worked out from the history on every run (real date,
 deployment and team of the crossing); only "every member of a squad registered" is remembered in
 `history/milestones_reached.csv`, because the roster changes.
 
-**Now in beta: raids.** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
+**Raids (live).** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
 planet, start and end in **UTC** (the pages show Paris time). The deployments in the window are found for you:
 company / platoon raids keep only squads **hosted** by someone of that unit on that day; other planets and outside
 hosts are listed but not ticked; squads answering *Raid = Yes* in the form are ticked even on another planet.
-Tick / untick, save (`raids.csv`), Run report → `raids_beta.html` (turnout, guests, totals, records, squads) and a
-raid banner on the beta report for 7 days. Form answers tagged *Raid* that fit no declared raid are listed in the
+Tick / untick, save (`raids.csv`), Run report → `raids.html`, published with the report (turnout, turnout per
+platoon / squad / company, guests, totals, records, squads) and a raid banner on the report for 7 days. Form answers tagged *Raid* that fit no declared raid are listed in the
 Raids tab with a *Create raid* button. Raid deployments still count in all the normal stats.
+
+## Discord inbox (in progress - branch `discord-intake`)
+
+The register bot posts every register (details + the optional stat screenshots) into a channel of your private
+server, again at each status change; only **confirmed** and **denied** registers count (pending / flagged ones wait
+in `history\discord_waiting` until reviewed); `discord_inbox.py` reads the new messages at the start of every Run report, downloads the
+screenshots into `To_Process\discord` and writes the details to `history\discord_answers.csv`, which is read like
+the Google Form answers (both can be used together). What the bot must post: `docs/discord_intake.md`.
+
+The bot also marks each message it took: ✅ counted (confirmed / denied), 🔄 waiting for review (flagged),
+⚠️ couldn't be used (e.g. screenshots without a member list). It never posts or changes anything else.
+
+Setup: Developer Portal -> your app -> **Bot**: switch on *Message Content Intent*, copy the token (Reset Token).
+In your private server: give the bot *View Channel* + *Read Message History* + *Add Reactions* on the inbox channel; turn on
+Developer Mode (User Settings -> Advanced) and right-click the channel -> *Copy Channel ID*. Browser panel ->
+*Settings & reset -> Discord inbox*: paste both, **Save**, **Test connection**. Test without the register bot:
+post a message there with three screenshots and lines like `Host: Pengus`, `Members: Vicktor, Panini, Tiger`,
+`Planet: Luxuriant`, `Enemy: Terminids`, `Start: <t:1792876200:F>`, `Operation: Test drop`.
 
 ## Automatic pickup from Google Drive (no more downloading)
 
@@ -192,8 +226,7 @@ fixed anything, then **Publish online**.
 
 **Form fields used** (new *505th Data Deployment Registry* form): Operation Name, **Operation starting date as a
 Discord timestamp** (`<t:1734098400:F>` from sesh.fyi/timestamp – shown in Paris time, change with
-`--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, missions
-affected by crashes, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
+`--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
 A start date that isn't a valid timestamp falls back to the submission time and is reported in the Deployments sheet.
 
 Without the Sheets script it still works with files named `Host_Player2_Player3_Player4_X.png`; deployments are
@@ -217,13 +250,13 @@ only reads the three new ones. More options: `--no-drive` (ignore the Google Dri
 
 ## Sharing it
 * **Discord:** paste `output/discord_post.txt` (headline numbers + Highlights).
-* **Website:** every run copies `index.html`, `players.html` and `units.html` into **`htmlReport`**;
+* **Website:** every run copies `index.html`, `players.html`, `units.html` and `chart.umd.js` into **`htmlReport`**;
   **Run & publish** (or `publish_site.bat`) uploads them to Cloudflare Pages - see *Putting it online*.
 
 ## Putting it online (Cloudflare Pages, free)
 
 The pages are self-contained files, so no server is needed. `publish_site.bat` / **Publish online** uploads
-`htmlReport\index.html`, `players.html` and `units.html` (plus safety headers and a "don't index me" note for search
+`htmlReport\index.html`, `players.html`, `units.html` and `chart.umd.js` (the charts library; plus safety headers and a "don't index me" note for search
 engines) - nothing else from the folder. Static pages are free and unlimited on Cloudflare's free plan; no card needed.
 
 First time (about 5 minutes): double-click `publish_site.bat` · if Node.js is missing it offers to install it (Y) ·
@@ -287,8 +320,7 @@ Server-wide, not a leaderboard:
   registry's *Graphs* tab) and deployments per week;
 * **fronts** – share of deployments (Terminids / Automatons / Illuminates), K/D per front, table with accuracy and
   kills per mission;
-* **difficulty** mix, fun totals (missions without dying, melee kills, friendly fire…), **operation success rate**
-  and deployments hit by crashes (from the form);
+* **planets** share, fun totals (missions without dying, melee kills, friendly fire…);
 * **highlights** – Top gun, Sharpshooter, Untouchable, Stratagem hero, Guardian angel, Sample hoarder, Melee maniac,
   Stim enthusiast, Oops (friendly fire), Accident report, Deadliest deployment, Flawless execution;
 * planets (with sector, from the *PlanetsAndSectors* tab) and the deployment log.

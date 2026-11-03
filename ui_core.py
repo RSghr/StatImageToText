@@ -154,7 +154,8 @@ def items_to_clear(with_forms: bool, with_history: bool = False, with_players: b
     items: list[Path] = []
     if TO_PROCESS.exists():
         items += [p for p in TO_PROCESS.iterdir() if p.name != "PUT_SCREENSHOTS_HERE.txt"]
-    for p in (OUTPUT, HTML_DIR / "index.html", HTML_DIR / "players.html", HTML_DIR / "units.html"):
+    for p in (OUTPUT, HTML_DIR / "index.html", HTML_DIR / "players.html", HTML_DIR / "units.html", HTML_DIR / "raids.html",
+              HTML_DIR / "chart.umd.js"):
         if p.exists():
             items.append(p)
     if with_forms:
