@@ -38,13 +38,19 @@ def assign(df: pd.DataFrame, units: "roster.Units") -> pd.DataFrame:
 
 
 def group_stats(rows: pd.DataFrame) -> dict:
+    total = len(rows)
+    if not total:
+        return dict(missions=0, reporters=0)
+    every = rows
+    rows = rows[rows["in_avg"]] if "in_avg" in rows.columns else rows   # per mission: without the ones set aside
     n = len(rows)
     if not n:
-        return dict(missions=0, reporters=0)
+        return dict(missions=int(total), reporters=int(every["player_key"].nunique()),
+                    deployments=int(every["deployment"].nunique()))
     k, d = rows["kills"].sum(), rows["deaths"].sum()
     hit, fired = rows["shots_hit"].sum(), rows["shots_fired"].sum()
-    return dict(missions=int(n), reporters=int(rows["player_key"].nunique()),
-                deployments=int(rows["deployment"].nunique()),
+    return dict(missions=int(total), reporters=int(every["player_key"].nunique()),
+                deployments=int(every["deployment"].nunique()),
                 kpm=round(k / n, 1), kd=round(k / d, 2) if d else None,
                 acc=round(100 * hit / fired, 1) if fired else None,
                 deathless=round(100 * (rows["deaths"] == 0).sum() / n, 1),
@@ -160,6 +166,8 @@ def build_pages(out_dir, title: str, df: pd.DataFrame, cards: list[dict], style:
     (out_dir / "units.html").write_text(page, encoding="utf-8")
     msg = f"Companies & squads: units.html - roster {n_members} members"
     moved = [c for c in changes if c["event"] in ("moved", "joined", "left")]
+    for r in roster.LAST_RENAMES:
+        print(f"Roster: {r['level']} renamed {r['old']} -> {r['new']} ({r['members']} members) - past deployments follow")
     if moved and changes[0]["date"] != roster.FIRST_DATE:
         msg += f", {len(moved)} change(s) logged today (" + ", ".join(
             f'{c["callsign"]} {c["event"]}' for c in moved[:6]) + ("..." if len(moved) > 6 else "") + ")"

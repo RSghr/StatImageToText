@@ -1,5 +1,5 @@
 """
-raids.py - BETA: regiment / company / platoon raids.
+raids.py - regiment / company / platoon raids (raids.html, published with the report).
 
 You declare a raid (browser panel -> Raids, saved in raids.csv): name, unit, planet, start and end in UTC.
 The deployments are then found automatically:
@@ -207,14 +207,16 @@ def raid_data(raid: dict, df: pd.DataFrame, rows: list[dict], units) -> dict | N
     rec = []
     ops = {c["deployment"]: c["op"] for c in ticked}
 
+    ga = g[g["in_avg"]] if "in_avg" in g.columns else g      # records skip player-missions set aside in History
+
     def best(col, title, sub, unit_, data=None):
-        x = g if data is None else data
+        x = ga if data is None else data
         if len(x) and x[col].max() > 0:
             r = x.loc[x[col].idxmax()]
             rec.append(dict(title=title, sub=sub, value=f"{int(r[col]):,}", unit=unit_, player=str(r["player"]),
                             where=f'{ops.get(r["deployment"], r["deployment"])} - mission {int(r["mission"])}'))
     best("kills", "Top gun", "Most kills in a mission", "kills")
-    best("kills", "Untouchable", "Most kills without dying", "kills", g[g["deaths"] == 0])
+    best("kills", "Untouchable", "Most kills without dying", "kills", ga[ga["deaths"] == 0])
     best("stratagems_used", "Stratagem hero", "Most stratagems in a mission", "stratagems")
     best("melee_kills", "Melee maniac", "Most melee kills in a mission", "melee kills")
     squads = []
@@ -229,7 +231,34 @@ def raid_data(raid: dict, df: pd.DataFrame, rows: list[dict], units) -> dict | N
         top = max(squads, key=lambda s: s["kills"])
         rec.append(dict(title="Deadliest squad", sub="Most kills in one deployment", value=f'{top["kills"]:,}',
                         unit="kills", player=top["team"], where=top["op"]))
+    # turnout one level down: per company (regiment raid), per platoon (company raid), per squad (platoon raid)
+    sub = {"regiment": "company", "company": "platoon", "platoon": "squad"}[level]
+    sizes: dict = {}
+    if units:
+        for hist in units.by_key.values():
+            u = units.unit_at(hist[0]["callsign"], a)
+            if in_unit(u, level, unit):
+                n = u.get(sub) or "Leaders"
+                sizes[n] = sizes.get(n, 0) + 1
+    present: dict = {}
+    for _, p in people.iterrows():
+        u = units.unit_at(p["player"], p["date"]) if units else None
+        if in_unit(u, level, unit):
+            n = u.get(sub) or "Leaders"
+            present[n] = present.get(n, 0) + 1
+    try:
+        import roster
+        comp = unit.partition(" / ")[0]
+        pos = (lambda n: roster.sheet_pos(n)) if sub == "company" else (
+            (lambda n: roster.sheet_pos(comp, n)) if sub == "platoon" else
+            (lambda n: roster.sheet_pos(comp, unit.partition(" / ")[2], n)))
+        order = sorted(sizes, key=lambda n: (n == "Leaders", pos(n)))
+    except Exception:  # noqa: BLE001
+        order = sorted(sizes, key=lambda n: (n == "Leaders", n))
+    breakdown = [dict(name=n, present=present.get(n, 0), size=sizes[n],
+                      pct=round(100 * present.get(n, 0) / sizes[n]) if sizes[n] else 0) for n in order]
     return dict(id=raid["id"], name=raid["name"] or "Raid", level=level, unit=unit, label=unit_label(level, unit),
+                sub=sub, breakdown=breakdown, missions=int(len(g.drop_duplicates(["deployment", "mission"]))),
                 planet=raid.get("planet", ""), notes=raid.get("notes", ""),
                 start=a.strftime("%d %b %Y %H:%M"), end=b.strftime("%d %b %Y %H:%M") if b.date() != a.date()
                 else b.strftime("%H:%M"), ts=a.isoformat(), end_ts=b.isoformat(),
@@ -285,6 +314,9 @@ PAGE = r"""<!doctype html>
 .raid .hls{margin-top:12px}
 table.sq td:nth-child(3){white-space:normal;min-width:200px}
 .guests{color:var(--muted);font-size:13px;margin-top:8px}
+.tob{display:grid;grid-template-columns:1fr auto;gap:2px 12px;padding:7px 0;border-bottom:1px solid var(--grid)}
+.tob:last-child{border-bottom:0}.tob .v{color:var(--text2);font-variant-numeric:tabular-nums}
+.tob .bar{grid-column:1/-1;height:6px;background:var(--surface2)}.tob .bar i{display:block;height:100%;background:var(--accent)}
 .raid .hw,.raid .hp{overflow-wrap:anywhere}
 </style></head>
 <body>
@@ -299,6 +331,11 @@ table.sq td:nth-child(3){white-space:normal;min-width:200px}
 const D = {{DATA}};
 const fmt = v => v == null ? '-' : Number(v).toLocaleString('en-US');
 function el(tag, cls, text){ const e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+const DARK = () => (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
+function lighten(hex){ // 35% white on dark backgrounds, so a dark blue stays visible (same as the other pages)
+  if(!/^#[0-9a-f]{6}$/i.test(hex) || !DARK()) return hex;
+  const n=parseInt(hex.slice(1),16), m=c=>Math.round(c*0.65+255*0.35);
+  return '#'+[n>>16,(n>>8)&255,n&255].map(m).map(x=>x.toString(16).padStart(2,'0')).join(''); }
 function tile(a,b,c){ const t=el('div','tile'); t.append(el('div','tl',a), el('div','tv',b)); if(c) t.append(el('div','ts',c)); return t; }
 document.getElementById('intro').textContent = D.raids.length
   ? 'Grand occasions: a unit deploys together on the same planet. Times in Paris time. Squadmates from outside the unit count as guests.'
@@ -307,7 +344,7 @@ const root = document.getElementById('root');
 D.raids.forEach(r=>{
   const s = el('section','raid'); s.id = 'raid-'+r.id;
   const h = el('div','rh'); const lab=el('span','rlab', r.label);
-  if(r.color){ lab.style.background=r.color; lab.style.color='#fff'; s.style.borderTop='4px solid '+r.color; s.style.paddingTop='12px'; }
+  if(r.color){ lab.style.background=r.color; lab.style.color='#fff'; s.style.borderTop='4px solid '+lighten(r.color); s.style.paddingTop='12px'; }
   h.append(lab, el('h3',null,r.name)); s.append(h);
   s.append(el('div','rmeta', [r.start+(r.end?' - '+r.end:''), r.planet, r.notes].filter(Boolean).join(' · ')));
   if(r.badges.length){ const b=el('div','badges'); r.badges.forEach(x=>b.append(el('span',null,'★ '+x))); s.append(b); }
@@ -319,8 +356,13 @@ D.raids.forEach(r=>{
            tile('Casualties', fmt(r.deaths), 'Helldivers fallen'),
            tile('Samples', fmt(r.samples), 'extracted'),
            tile('Stratagems', fmt(r.stratagems), 'called in'),
-           tile('Operations', r.success_known ? r.success+'/'+r.success_known : '-', 'completed'));
+           tile('Missions', fmt(r.missions), 'played'));
   s.append(t);
+  if(r.breakdown && r.breakdown.length){                     // turnout one level down
+    const c=el('div','card'); c.style.marginTop='12px'; c.append(el('h3',null,'Turnout by '+r.sub), el('div','sub','Members who deployed / members on the roster that day'));
+    r.breakdown.forEach(x=>{ const row=el('div','tob'); row.append(el('div',null,x.name), el('div','v',x.present+' / '+x.size+' ('+x.pct+'%)'));
+      const b=el('div','bar'); const i=el('i'); i.style.width=Math.min(100,x.pct)+'%'; if(r.color) i.style.background=lighten(r.color); b.appendChild(i); row.appendChild(b); c.appendChild(row); });
+    s.append(c); }
   if(r.records.length){ const g=el('div','hls'); r.records.forEach(x=>{ const c=el('div','hl'); const b=el('div','hb');
       b.append(el('div','ht',x.title), el('div','hs',x.sub)); const v=el('div','hv'); v.append(el('b',null,x.value), document.createTextNode(' '+x.unit)); b.append(v);
       b.append(el('div','hp',x.player), el('div','hw',x.where)); c.append(b); g.append(c); }); s.append(g); }
@@ -343,6 +385,7 @@ BANNER_CSS = """<style>
 .raidnow .rlab{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;background:var(--accent);color:var(--accent-ink);padding:2px 8px}
 .raidnow b{font-size:20px}.raidnow .m{color:var(--muted);font-size:13.5px}
 .raidnow a{margin-left:auto;color:var(--text);font-weight:700}
+.raidnow.rc{border-color:color-mix(in srgb,var(--rc) 70%,white)}.raidnow.rc .rlab{background:var(--rc);color:#fff}
 </style>"""
 
 
@@ -353,7 +396,9 @@ def banner(data: dict, href: str) -> str:
         bits = [f'{r["squads_n"]} squads', f'{r["helldivers"]} Helldivers', f'{r["kills"]:,} kills']
         if r["turnout"] is not None:
             bits.append(f'{r["turnout"]}% turnout')
-        out.append(f'<div class="raidnow"><span class="rlab">{H.escape(r["label"])}</span><div><b>{H.escape(r["name"])}</b>'
+        col = r.get("color") or ""
+        style = (f' style="--rc:{H.escape(col)}"' if col else "")
+        out.append(f'<div class="raidnow{" rc" if col else ""}"{style}><span class="rlab">{H.escape(r["label"])}</span><div><b>{H.escape(r["name"])}</b>'
                    f'<div class="m">{H.escape(r["start"])} · {H.escape(r["planet"])} · {" · ".join(bits)}</div></div>'
                    f'<a href="{href}#raid-{H.escape(r["id"])}">See the raid &rarr;</a></div>')
     return "".join(out)
@@ -448,3 +493,33 @@ def save_one(raid: dict, ticked: list[str]) -> dict:
 
 def delete(raid_id: str):
     save([x for x in load() if x["id"] != raid_id])
+
+
+RAIDS_LINK = '<a class="navlink" href="raids.html" style="margin-right:8px">Raids &rarr;</a>'
+
+
+def build_page(out_dir: Path, df: pd.DataFrame, dep: pd.DataFrame, title: str) -> str:
+    """Write raids.html (only when there is at least one raid), add the Raids link to the other pages and,
+    for RECENT_DAYS after a raid, a banner at the top of the report. Returns a line for the run log."""
+    import roster
+    data = build(df, dep, roster.Units())
+    out = out_dir / "raids.html"
+    if not data["raids"]:
+        out.unlink(missing_ok=True)
+        return "Raids: none declared yet (browser panel -> Raids)"
+    rep = (out_dir / "report.html").read_text(encoding="utf-8")
+    style = rep[rep.index("<style>") + 7:rep.index("</style>")]
+    out.write_text(page(data, title, style), encoding="utf-8")
+    if data["recent"]:
+        rep = rep.replace("</head>", BANNER_CSS + "</head>", 1)
+        rep = rep.replace('<main class="wrap">', '<main class="wrap">\n' + banner(data, "raids.html"), 1)
+    (out_dir / "report.html").write_text(rep, encoding="utf-8")
+    for name in ("report.html", "players.html", "units.html"):
+        f = out_dir / name
+        if f.exists():
+            p = f.read_text(encoding="utf-8")
+            if RAIDS_LINK not in p:
+                p = p.replace('<nav class="wrap topnav">', '<nav class="wrap topnav">' + RAIDS_LINK, 1)
+            f.write_text(p, encoding="utf-8")
+    return (f"Raids: raids.html - {len(data['raids'])} raid(s)"
+            + (f", banner for: {', '.join(r['name'] for r in data['recent'])}" if data["recent"] else ""))

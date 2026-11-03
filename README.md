@@ -60,6 +60,9 @@ opens in your browser. Close the console window to stop it.
   answers and **Save & run report**. No spreadsheet program needed.
 * **Who is who** – edit `players.csv` (search, add, remove).
 * **History** – every deployment; untick *Count* to leave one out; add an old batch (stats.csv).
+  A **⚠ check names** badge means the player order typed in the form contradicts the names read on screen
+  (e.g. two players swapped) and some players could only be guessed: open *Edit*, look at the screenshots,
+  fix the names if needed and **Save** – that marks the deployment as reviewed.
 * **Share** – open the report / player lookup, Publish online, copy the Discord message or index.html.
 * **Settings & reset** – the Google Drive folder, open folders in Windows, Reset (archive / delete).
 
@@ -165,13 +168,31 @@ Personal milestones are on the player card. Everything is worked out from the hi
 deployment and team of the crossing); only "every member of a squad registered" is remembered in
 `history/milestones_reached.csv`, because the roster changes.
 
-**Now in beta: raids.** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
+**Raids (live).** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
 planet, start and end in **UTC** (the pages show Paris time). The deployments in the window are found for you:
 company / platoon raids keep only squads **hosted** by someone of that unit on that day; other planets and outside
 hosts are listed but not ticked; squads answering *Raid = Yes* in the form are ticked even on another planet.
-Tick / untick, save (`raids.csv`), Run report → `raids_beta.html` (turnout, guests, totals, records, squads) and a
-raid banner on the beta report for 7 days. Form answers tagged *Raid* that fit no declared raid are listed in the
+Tick / untick, save (`raids.csv`), Run report → `raids.html`, published with the report (turnout, turnout per
+platoon / squad / company, guests, totals, records, squads) and a raid banner on the report for 7 days. Form answers tagged *Raid* that fit no declared raid are listed in the
 Raids tab with a *Create raid* button. Raid deployments still count in all the normal stats.
+
+## Discord inbox (in progress - branch `discord-intake`)
+
+The register bot posts every register (details + the optional stat screenshots) into a channel of your private
+server, again at each status change; only **confirmed** and **denied** registers count (pending / flagged ones wait
+in `history\discord_waiting` until reviewed); `discord_inbox.py` reads the new messages at the start of every Run report, downloads the
+screenshots into `To_Process\discord` and writes the details to `history\discord_answers.csv`, which is read like
+the Google Form answers (both can be used together). What the bot must post: `docs/discord_intake.md`.
+
+The bot also marks each message it took: ✅ counted (confirmed / denied), 🔄 waiting for review (flagged),
+⚠️ couldn't be used (e.g. screenshots without a member list). It never posts or changes anything else.
+
+Setup: Developer Portal -> your app -> **Bot**: switch on *Message Content Intent*, copy the token (Reset Token).
+In your private server: give the bot *View Channel* + *Read Message History* + *Add Reactions* on the inbox channel; turn on
+Developer Mode (User Settings -> Advanced) and right-click the channel -> *Copy Channel ID*. Browser panel ->
+*Settings & reset -> Discord inbox*: paste both, **Save**, **Test connection**. Test without the register bot:
+post a message there with three screenshots and lines like `Host: Pengus`, `Members: Vicktor, Panini, Tiger`,
+`Planet: Luxuriant`, `Enemy: Terminids`, `Start: <t:1792876200:F>`, `Operation: Test drop`.
 
 ## Automatic pickup from Google Drive (no more downloading)
 
@@ -205,8 +226,7 @@ fixed anything, then **Publish online**.
 
 **Form fields used** (new *505th Data Deployment Registry* form): Operation Name, **Operation starting date as a
 Discord timestamp** (`<t:1734098400:F>` from sesh.fyi/timestamp – shown in Paris time, change with
-`--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, missions
-affected by crashes, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
+`--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
 A start date that isn't a valid timestamp falls back to the submission time and is reported in the Deployments sheet.
 
 Without the Sheets script it still works with files named `Host_Player2_Player3_Player4_X.png`; deployments are
@@ -300,8 +320,7 @@ Server-wide, not a leaderboard:
   registry's *Graphs* tab) and deployments per week;
 * **fronts** – share of deployments (Terminids / Automatons / Illuminates), K/D per front, table with accuracy and
   kills per mission;
-* **difficulty** mix, fun totals (missions without dying, melee kills, friendly fire…), **operation success rate**
-  and deployments hit by crashes (from the form);
+* **planets** share, fun totals (missions without dying, melee kills, friendly fire…);
 * **highlights** – Top gun, Sharpshooter, Untouchable, Stratagem hero, Guardian angel, Sample hoarder, Melee maniac,
   Stim enthusiast, Oops (friendly fire), Accident report, Deadliest deployment, Flawless execution;
 * planets (with sector, from the *PlanetsAndSectors* tab) and the deployment log.

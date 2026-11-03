@@ -339,8 +339,11 @@ class App(BaseTk):
         py = python_exe()
         env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
         flags = subprocess.CREATE_NO_WINDOW if sys.platform.startswith("win") else 0
-        steps = ([[py, "hd2stats.py", "To_Process", "--recursive"] + (["--force"] if force else [])]
-                 if read_images else []) + [[py, "make_report.py", "-i", "output"]]
+        import discord_inbox
+        inbox = discord_inbox.configured()      # new deployments posted in the Discord inbox first
+        steps = ([[py, "discord_inbox.py"]] if inbox else []) + \
+                ([[py, "hd2stats.py", "To_Process", "--recursive"] + (["--force"] if force else [])]
+                 if read_images or inbox else []) + [[py, "make_report.py", "-i", "output"]]
         for cmd in steps:
             try:
                 p = subprocess.Popen(cmd, cwd=HERE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env,
@@ -359,7 +362,7 @@ class App(BaseTk):
             shutil.copyfile(OUTPUT / "report.html", HTML_DIR / "index.html")
             if (OUTPUT / "players.html").exists():
                 shutil.copyfile(OUTPUT / "players.html", HTML_DIR / "players.html")
-            for extra in ("units.html", "chart.umd.js"):
+            for extra in ("units.html", "raids.html", "chart.umd.js"):
                 if (OUTPUT / extra).exists():
                     shutil.copyfile(OUTPUT / extra, HTML_DIR / extra)
                 else:

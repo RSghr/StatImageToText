@@ -71,6 +71,22 @@ textarea{min-height:240px;font:13px/1.4 Consolas,ui-monospace,monospace}
 .slotbar div{text-align:center;font-size:12px;padding:3px;border:1px solid var(--line);color:var(--muted)}
 .slotbar div.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
 footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding:12px 0 24px}
+tr.sub td{background:var(--bg)}
+.warnb{font:inherit;font-size:12px;font-weight:700;margin-top:4px;padding:2px 8px;border:1px solid var(--warn);background:transparent;color:var(--warn);cursor:pointer;white-space:nowrap}
+.warnbox{border-left:3px solid var(--warn);padding:8px 10px;margin-bottom:10px;font-size:13px;background:color-mix(in srgb,var(--warn) 10%,transparent)}
+td.edited{background:color-mix(in srgb,var(--accent) 22%,transparent)!important}
+.pgrid{display:grid;gap:6px;align-items:center;padding:6px 0}
+.pcell{display:flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--surface);padding:6px 8px;font-size:13px;cursor:pointer;min-width:0}
+.pcell span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcell.out{opacity:.55;border-style:dashed}.pcell.out b{text-decoration:line-through}
+.pcell.off{opacity:.4;cursor:default;background:var(--surface2)}
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:20;padding:24px;cursor:zoom-out}
+.lightbox img{max-width:100%;max-height:100%;box-shadow:0 0 0 1px #444;background:#000}
+.lightbox .lbx{position:absolute;top:12px;right:16px;color:#fff;font:700 15px sans-serif;opacity:.8}
+.lightbox .lbname{position:absolute;bottom:10px;left:16px;color:#ccc;font:13px sans-serif}
+.lightbox .lbmsg{color:#fff;font:16px sans-serif;background:#222;padding:18px 22px;border:1px solid #444}
+.mbtn{font:inherit;font-weight:700;font-size:13px;width:28px;height:26px;margin-right:4px;border:1px solid var(--line);background:var(--surface);color:var(--text);cursor:zoom-in}
+.mbtn:hover{border-color:var(--accent)}.mbtn:disabled{opacity:.35;cursor:default}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}@media (max-width:640px){.fgrid{grid-template-columns:1fr}}
 .fgrid label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);font-weight:600}
 select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--line);padding:6px 8px;width:100%}
@@ -84,7 +100,7 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
  <button data-t="check">Check<span class="badge" id="badge" hidden></span></button>
  <button data-t="players">Who is who</button>
  <button data-t="history">History</button>
- <button data-t="raids">Raids <span class="small muted">beta</span></button>
+ <button data-t="raids">Raids</button>
  <button data-t="share">Share</button>
  <button data-t="settings">Settings &amp; reset</button>
 </nav>
@@ -141,20 +157,25 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
 <!-- HISTORY -->
 <section class="tab" id="t-history">
  <p class="muted small">Every deployment logged so far. Untick <b>Count</b> to leave one out of the report (a test,
- a duplicate); it stays in the history. Changes apply at the next Run report.</p>
+ a duplicate); it stays in the history. <b>Edit</b> fixes the date, operation, planet, front or a player's name
+ (yellow = fixed by hand). <b>Players</b> opens the 3 missions × 4 players: untick a player in a mission
+ (e.g. a crash) to leave that one out of the averages and records - their kills still count in the totals.
+ Changes apply at the next Run report.</p>
  <div class="row" style="margin-bottom:10px">
   <label class="b">Add an old batch (stats.csv)…<input type="file" id="histFile" accept=".csv" hidden></label>
   <span class="small muted" id="histMsg"></span>
  </div>
- <div class="tw"><table><thead><tr><th>Count</th><th>Date</th><th>Operation</th><th>Planet</th><th>Front</th><th>Diff.</th>
-  <th>Missions</th><th>Players</th><th class="num">Kills</th><th class="num">Deaths</th></tr></thead><tbody id="histBody"></tbody></table></div>
+ <div class="tw"><table><thead><tr><th>Count</th><th>Date</th><th>Operation</th><th>Planet</th><th>Front</th>
+  <th>Screenshots</th><th>Players</th><th class="num">Kills</th><th class="num">Deaths</th><th></th></tr></thead><tbody id="histBody"></tbody></table></div>
+ <datalist id="knownCallsigns"></datalist>
 </section>
 
 <!-- RAIDS (beta) -->
 <section class="tab" id="t-raids">
  <p class="muted small">Declare a raid: the deployments in its time window are found for you (company / platoon raids:
  only squads hosted by someone of that unit; other planets and outside hosts are listed but not ticked). Tick or untick
- what belongs to it, save, then Run report. Shows on the <b>beta</b> pages only (Share &rarr; Beta &rarr; Raids).</p>
+ what belongs to it, save, then Run report. The raids page (and a banner on the report for 7 days after a raid)
+ goes online with the next publish.</p>
  <div class="grid2">
   <div>
    <div class="card"><div class="row" style="justify-content:space-between"><h3>Raids</h3><button class="b" id="rdNew">+ New raid</button></div>
@@ -186,7 +207,8 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
  <div class="card"><h3>Report</h3>
   <div class="row"><a class="b" href="/view/report.html" target="_blank" rel="noopener">Open report</a>
    <a class="b" href="/view/players.html" target="_blank" rel="noopener">Open player lookup</a>
-   <a class="b" href="/view/units.html" target="_blank" rel="noopener">Open companies &amp; squads</a></div>
+   <a class="b" href="/view/units.html" target="_blank" rel="noopener">Open companies &amp; squads</a>
+   <a class="b" href="/view/raids.html" target="_blank" rel="noopener">Open raids</a></div>
   <p class="small muted">Companies &amp; squads come from the roster tabs of the answers spreadsheet (roster_raw.csv, refreshed every day, on every edit and with every form answer).</p></div>
  <div class="card"><h3>Beta <span class="small muted">(this PC only, never published)</span></h3>
   <p class="small muted">Test copies of the pages for future changes (beta.py). The live site is not affected.</p>
@@ -214,6 +236,15 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
   (no window) - the bookmark then always works</span></label>
   <div class="row" style="margin-top:6px"><button class="b" id="panelStop">Stop the panel</button>
    <span class="small muted">Double-click Stats Web UI.bat (or restart the PC with the box ticked) to start it again.</span></div></div>
+ <div class="card"><h3>Discord inbox</h3>
+  <p class="small muted">Deployments posted by the register bot in your private server. Your bot only reads that one
+  channel, at each Run report. The token is kept on this PC (<code>.discord_token</code>) and never shown again.</p>
+  <div class="fgrid">
+   <label>Bot token<input type="password" id="ibToken" autocomplete="off" placeholder="paste to set or replace"></label>
+   <label>Channel ID<input type="text" id="ibChan" placeholder="right-click the channel - Copy Channel ID"></label>
+  </div>
+  <div class="row" style="margin-top:8px"><button class="b" id="ibSave">Save</button><button class="b" id="ibTest">Test connection</button>
+   <span class="small" id="ibMsg"></span></div></div>
  <div class="card"><h3>Company colours</h3>
   <p class="small muted">Used on the report (milestones), the companies page, player cards and raids. Type a hex code
   (e.g. <code>#003478</code>) or pick one, then Save; applies at the next Run report. The regiment stays yellow.</p>
@@ -355,11 +386,18 @@ function preview(r){
   const info = el('div','small'); info.appendChild(el('b',null, `${r.player} · ${r.stat}`)); info.appendChild(document.createTextNode(` · read ${r.value_read}`)); p.appendChild(info);
   if(r.readings) p.appendChild(el('div','small muted', r.readings));
   const src = '/api/shot?f=' + encodeURIComponent(r.file);
-  const a = el('a'); a.href = src; a.target = '_blank'; a.rel = 'noopener'; a.title = 'Open full size';
-  const img = el('img'); img.alt = r.file; img.src = src;
-  img.onerror = () => { a.replaceWith(el('p','muted','Screenshot not found in To_Process or the Drive folder.')); };
-  a.appendChild(img); p.appendChild(a);
-  p.appendChild(el('div','small muted','Click the picture to open it full size. Slot 0 = leftmost player.'));
+  const img = el('img'); img.alt = r.file; img.src = src; img.style.cursor='zoom-in'; img.title='Click to view full screen';
+  img.onerror = () => { img.replaceWith(el('p','muted','Screenshot not found in To_Process or the Drive folder.')); };
+  img.onclick = () => lightbox(src, r.file); p.appendChild(img);
+  p.appendChild(el('div','small muted','Click the picture to view it full screen (click anywhere or Esc to close). Slot 0 = leftmost player.'));
+}
+function lightbox(src, alt){
+  const o=el('div','lightbox'); const i=el('img'); i.src=src; i.alt=alt||''; o.append(i, el('div','lbx','✕  click or Esc to close'));
+  i.onerror=()=>{ i.replaceWith(el('div','lbmsg','Screenshot not found in To_Process, the Drive folder or the Discord inbox ('+(alt||'')+').')); };
+  if(alt) o.appendChild(el('div','lbname',alt));
+  const close=()=>{ o.remove(); document.removeEventListener('keydown', key); };
+  const key=e=>{ if(e.key==='Escape') close(); };
+  o.onclick=close; document.addEventListener('keydown', key); document.body.appendChild(o);
 }
 $('#showDone').onchange = drawCorr;
 async function saveCorr(){
@@ -389,19 +427,93 @@ $('#plAdd').onclick = () => { PL.unshift({callsign:'', also_known_as:''}); $('#p
 $('#plSave').onclick = () => guard(async()=>{ const j=await api('/api/players',{rows:PL}); $('#plMsg').textContent=`Saved ${j.saved} callsigns. Run report to apply.`; });
 
 // history
+let HOPT = {planets:[], fronts:[]};
 async function loadHistory(){ await guard(async()=>{
-  const rows=(await api('/api/history')).rows; const body=$('#histBody'); body.innerHTML='';
+  const hj=await api('/api/history'); const rows=hj.rows; HOPT={planets:hj.planets||[], fronts:hj.fronts||[]};
+  const dlc=$('#knownCallsigns'); dlc.innerHTML=''; (hj.callsigns||[]).forEach(c=>{ const o=el('option'); o.value=c; dlc.appendChild(o); });
+  const body=$('#histBody'); body.innerHTML='';
   if(!rows.length){ const tr=el('tr'); const td=el('td','muted','The history is empty - it fills on every Run report.'); td.colSpan=10; tr.appendChild(td); body.appendChild(tr); return; }
   rows.slice().reverse().forEach(r=>{
     const tr=el('tr'); const td=el('td'); const cb=el('input'); cb.type='checkbox'; cb.checked=(r.keep||'yes').toLowerCase()!=='no';
     cb.onchange=()=>guard(async()=>{ await api('/api/history/keep',{uid:r.uid, keep:cb.checked}); $('#histMsg').textContent='Saved - applies at the next Run report.'; });
     td.appendChild(cb); tr.appendChild(td);
-    [String(r.date||'').slice(0,16), r.operation, r.planet, r.front, r.difficulty, r.missions, r.players].forEach(v=>tr.appendChild(el('td',null,v||'')));
-    tr.appendChild(el('td','num',r.kills)); tr.appendChild(el('td','num',r.deaths)); body.appendChild(tr);
+    [['date',String(r.date||'').slice(0,16)], ['operation',r.operation], ['planet',r.planet], ['front',r.front]].forEach(([f,v])=>{
+      const c=el('td',null,v||''); if((r.edited||[]).includes(f)){ c.classList.add('edited'); c.title='Fixed by hand (was: '+(r['orig_'+f]||'empty')+')'; } tr.appendChild(c); });
+    const tdm=el('td'); tdm.style.whiteSpace='nowrap';                // mission screenshots, full screen
+    for(let m=1;m<=3;m++){ const bm=el('button','mbtn',String(m)); bm.title='Mission '+m+' screenshot';
+      if(m>Number(r.missions||0)){ bm.disabled=true; bm.title='No screenshot for mission '+m; }
+      bm.onclick=()=>guard(async()=>{ const g=await gridOf(r.uid); const mi=g.find(x=>x.mission===m);
+        if(!mi) throw new Error('No screenshot for mission '+m+'.');
+        lightbox('/api/shot?f='+encodeURIComponent(mi.file), mi.file); });
+      tdm.appendChild(bm); }
+    tr.appendChild(tdm);
+    const pc=el('td',null,r.players||''); if(Object.keys(r.renamed||{}).length){ pc.classList.add('edited'); pc.title='Fixed by hand (was: '+(r.orig_players||'')+')'; }
+    let bw=null;
+    if(r.names_flag){ bw=el('button','warnb','⚠ check names'); bw.title=r.names_flag; pc.appendChild(el('br')); pc.appendChild(bw); }
+    tr.appendChild(pc);
+    tr.appendChild(el('td','num',r.kills)); tr.appendChild(el('td','num',r.deaths));
+    const tdp=el('td'); tdp.style.whiteSpace='nowrap';
+    const be=el('button','b small','Edit'); be.style.cssText='padding:4px 10px;margin-right:4px';
+    const bp=el('button','b small','Players ▾'); bp.style.cssText='padding:4px 10px'; tdp.append(be, bp); tr.appendChild(tdp);
+    body.appendChild(tr);
+    const sub=el('tr','sub'); sub.hidden=true; const sc=el('td'); sc.colSpan=10; sub.appendChild(sc); body.appendChild(sub);
+    let mode='';
+    bp.onclick=()=>guard(async()=>{ if(mode==='players'){ sub.hidden=true; mode=''; bp.textContent='Players ▾'; return; }
+      mode='players'; bp.textContent='Players ▴'; sub.hidden=false; await drawGrid(sc, r.uid); });
+    be.onclick=()=>{ if(mode==='edit'){ sub.hidden=true; mode=''; return; } mode='edit'; bp.textContent='Players ▾'; sub.hidden=false; drawEdit(sc, r); };
+    if(bw) bw.onclick=()=>{ if(mode!=='edit') be.onclick(); sc.scrollIntoView({block:'nearest'}); };
   }); }); }
+function drawEdit(box, r){
+  box.innerHTML=''; const f=el('div','fgrid'); f.style.gridTemplateColumns='repeat(auto-fit,minmax(200px,1fr))';
+  const mk=(label, input)=>{ const l=el('label',null,label); l.appendChild(input); f.appendChild(l); return input; };
+  const d=el('input'); d.type='datetime-local'; d.value=String(r.date||'').slice(0,16).replace(' ','T'); mk('Start (Paris time)', d);
+  const o=el('input'); o.type='text'; o.value=r.operation||''; mk('Operation', o);
+  const p=el('select'); const opts=HOPT.planets.includes(r.planet)||!r.planet ? HOPT.planets : [r.planet].concat(HOPT.planets);
+  opts.forEach(x=>{ const op=el('option',null,x); op.value=x; p.appendChild(op); }); p.value=r.planet||''; mk('Planet', p);
+  const fr=el('select'); HOPT.fronts.forEach(x=>{ const op=el('option',null,x); op.value=x; fr.appendChild(op); }); fr.value=r.front||''; mk('Front', fr);
+  box.appendChild(f);
+  // players: rename one of them for this deployment only (e.g. read as the wrong person)
+  if(r.names_flag){ const w=el('div','warnbox');
+    w.append(el('b',null,'Check the names: '), document.createTextNode(r.names_flag+'. The players not recognised on screen were not placed by the form order - open the screenshots (1 2 3), fix the names below if needed, then Save.'));
+    box.appendChild(w); }
+  const ren=r.renamed||{}; const orig=String(r.orig_players||r.players||'').split(',').map(x=>x.trim()).filter(Boolean);
+  const pg=el('div','fgrid'); pg.style.cssText='grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-top:8px';
+  const pin={};
+  orig.forEach((name,i)=>{ const l=el('label',null,(i===0?'Host':'Player '+(i+1))+' (read: '+name+')'); const t=el('input'); t.type='text';
+    t.setAttribute('list','knownCallsigns'); t.value=ren[name]||name; pin[name]=t; l.appendChild(t); pg.appendChild(l); });
+  if(orig.length){ box.appendChild(el('div','small muted','Players (this deployment only - for a name that is always wrong, use Who is who):')); box.appendChild(pg); }
+  const row=el('div','row'); row.style.marginTop='8px';
+  const nfix=(r.edited||[]).length+Object.keys(ren).length;
+  const sv=el('button','b', r.names_flag ? 'Save - names are right' : 'Save'); const un=el('button','b','Undo my fixes'); un.disabled=!nfix;
+  const note=el('span','small muted', nfix ? 'Fixed by hand: '+(r.edited||[]).concat(Object.keys(ren).map(k=>k+' → '+ren[k])).join(', ')+' (hover a yellow cell to see the original)' : 'Values from the form / register.');
+  row.append(sv, un, note); box.appendChild(row);
+  box.appendChild(el('div','small muted','Your fixes are kept: a new run (or a new form answer) never overwrites them. Applies at the next Run report.'));
+  sv.onclick=()=>guard(async()=>{ const players={}; Object.entries(pin).forEach(([k,t])=>players[k]=t.value);
+    await api('/api/history/edit',{uid:r.uid, values:{date:d.value, operation:o.value, planet:p.value, front:fr.value, players, names_ok:true}});
+    toast('Saved - Run report to apply.'); loadHistory(); });
+  un.onclick=()=>guard(async()=>{ const v={}; (r.edited||[]).forEach(k=>v[k]=''); v.players={}; Object.keys(ren).forEach(k=>v.players[k]='');
+    await api('/api/history/edit',{uid:r.uid, values:v});
+    toast('Back to the original values - Run report to apply.'); loadHistory(); });
+}
+const GRIDS = {};
+async function gridOf(uid){ if(!GRIDS[uid]) GRIDS[uid]=(await api('/api/history/grid?uid='+encodeURIComponent(uid))).missions; return GRIDS[uid]; }
+async function drawGrid(box, uid){
+  box.innerHTML=''; delete GRIDS[uid]; const j={missions: await gridOf(uid)};
+  if(!j.missions.length){ box.appendChild(el('p','small muted','No player rows for this deployment.')); return; }
+  const g=el('div','pgrid'); g.style.gridTemplateColumns='auto repeat(4,minmax(0,1fr))';
+  g.appendChild(el('div','small muted','')); for(let s=0;s<4;s++) g.appendChild(el('div','small muted','slot '+s+(s===0?' (left)':'')));
+  j.missions.forEach(m=>{ g.appendChild(el('div','small','Mission '+m.mission));
+    m.slots.forEach((p,s)=>{ const c=el('label','pcell'+(p?'':' off')); const cb=el('input'); cb.type='checkbox';
+      if(!p){ cb.disabled=true; c.append(cb, el('span','muted','no player')); g.appendChild(c); return; }
+      cb.checked=!p.left_out; c.classList.toggle('out', p.left_out);
+      cb.onchange=()=>guard(async()=>{ await api('/api/history/exclude',{uid, file:m.file, slot:s, include:cb.checked});
+        c.classList.toggle('out', !cb.checked); $('#histMsg').textContent='Saved - applies at the next Run report.'; });
+      const t=el('span'); t.append(el('b',null,p.player), document.createTextNode(' · '+p.kills+' kills')); c.append(cb, t); g.appendChild(c); }); });
+  box.appendChild(g); box.appendChild(el('div','small muted','Ticked = counts in the averages. Unticked = left out of averages and records (still in the totals).'));
+}
 $('#histFile').onchange = e => upload([...e.target.files], 'history');
 
-// raids (beta)
+// raids
 let RD = null, RDcur = null, RDcand = [], RDdirty = false;
 ['#rdUnit','#rdPlanet','#rdStart','#rdEnd'].forEach(id=>$(id).addEventListener('change',()=>{ RDdirty=true; }));
 function paris(utc){ if(!utc) return ''; try{ return new Date(utc+':00Z').toLocaleString('en-GB',{timeZone:'Europe/Paris',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Paris'; }catch(e){ return ''; } }
@@ -447,7 +559,7 @@ $('#rdNew').onclick = () => editRaid(null);
 $('#rdCancel').onclick = () => { $('#rdEdit').hidden=true; };
 $('#rdSave').onclick = () => guard(async()=>{ if(RDdirty || !RDcand.length){ await findRaid(); if(RDcand.length){ toast('Deployments updated for the new settings - check the list, then Save again.'); return; } }
   const j = await api('/api/raids/save', {raid:formRaid(), ticked:RDcand.filter(c=>c.ticked).map(c=>c.uid)});
-  toast('Raid saved - Run report to update the beta pages.'); $('#rdEdit').hidden=true; loadRaids(); });
+  toast('Raid saved - Run report to update the raids page.'); $('#rdEdit').hidden=true; loadRaids(); });
 $('#rdDel').onclick = () => guard(async()=>{ if(!confirm('Delete the raid "'+RDcur.name+'"? (the deployments stay in the history)')) return;
   await api('/api/raids/delete', {id:RDcur.id}); $('#rdEdit').hidden=true; loadRaids(); });
 
@@ -484,7 +596,15 @@ async function loadColors(){ await guard(async()=>{ const j=await api('/api/colo
 }); }
 $('#colSave').onclick = () => guard(async()=>{ const cols={}; document.querySelectorAll('#colList input[type=text]').forEach(i=>cols[i.dataset.company]=i.value.trim());
   await api('/api/colors',{colors:cols}); $('#colMsg').textContent='Saved - Run report to apply.'; $('#colMsg').className='small ok'; loadColors(); });
-function loadSettings(){ loadPanel(); loadColors(); $('#trustOrder').checked = ST.trust_form_order !== false; $('#drivePath').value = ST.drive_setting || ''; $('#driveMsg').textContent = ST.drive_ok ? `✓ found - ${ST.shots_drive} screenshots` : (ST.drive_setting ? 'folder not found' : ''); $('#driveMsg').className='small '+(ST.drive_ok?'ok':'err'); }
+async function loadInbox(){ await guard(async()=>{ const j=await api('/api/inbox'); $('#ibChan').value=j.channel||'';
+  $('#ibToken').placeholder = j.has_token ? 'saved - paste a new one to replace it' : 'paste the bot token';
+  $('#ibMsg').textContent = j.has_token && j.channel ? j.deployments+' register(s) counted, '+j.waiting+' waiting for review' : 'not set up yet'; $('#ibMsg').className='small muted'; }); }
+$('#ibSave').onclick = () => guard(async()=>{ await api('/api/inbox',{token:$('#ibToken').value, channel:$('#ibChan').value});
+  $('#ibToken').value=''; toast('Saved.'); loadInbox(); });
+$('#ibTest').onclick = () => guard(async()=>{ $('#ibMsg').textContent='Testing...';
+  try{ const j=await api('/api/inbox/test',{}); $('#ibMsg').textContent='✓ '+j.bot+' reads '+j.channel+(j.warning?' - '+j.warning:''); $('#ibMsg').className='small '+(j.warning?'err':'ok'); }
+  catch(e){ $('#ibMsg').textContent='✗ '+e.message; $('#ibMsg').className='small err'; } });
+function loadSettings(){ loadPanel(); loadColors(); loadInbox(); $('#trustOrder').checked = ST.trust_form_order !== false; $('#drivePath').value = ST.drive_setting || ''; $('#driveMsg').textContent = ST.drive_ok ? `✓ found - ${ST.shots_drive} screenshots` : (ST.drive_setting ? 'folder not found' : ''); $('#driveMsg').className='small '+(ST.drive_ok?'ok':'err'); }
 $('#driveSave').onclick = () => guard(async()=>{ await api('/api/settings',{drive_folder:$('#drivePath').value}); await refresh(); loadSettings(); toast('Saved.'); });
 document.querySelectorAll('[data-open]').forEach(b => b.onclick = () => guard(()=>api('/api/open',{what:b.dataset.open})));
 async function reset(action){
