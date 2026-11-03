@@ -166,6 +166,8 @@ def build_pages(out_dir, title: str, df: pd.DataFrame, cards: list[dict], style:
     (out_dir / "units.html").write_text(page, encoding="utf-8")
     msg = f"Companies & squads: units.html - roster {n_members} members"
     moved = [c for c in changes if c["event"] in ("moved", "joined", "left")]
+    for r in roster.LAST_RENAMES:
+        print(f"Roster: {r['level']} renamed {r['old']} -> {r['new']} ({r['members']} members) - past deployments follow")
     if moved and changes[0]["date"] != roster.FIRST_DATE:
         msg += f", {len(moved)} change(s) logged today (" + ", ".join(
             f'{c["callsign"]} {c["event"]}' for c in moved[:6]) + ("..." if len(moved) > 6 else "") + ")"

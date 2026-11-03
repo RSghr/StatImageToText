@@ -176,7 +176,7 @@ def job_run(force: bool) -> bool:
         shutil.copyfile(OUTPUT / "report.html", HTML_DIR / "index.html")
         if (OUTPUT / "players.html").exists():
             shutil.copyfile(OUTPUT / "players.html", HTML_DIR / "players.html")
-        for extra in ("units.html", "chart.umd.js"):
+        for extra in ("units.html", "raids.html", "chart.umd.js"):
             if (OUTPUT / extra).exists():
                 shutil.copyfile(OUTPUT / extra, HTML_DIR / extra)
             else:
@@ -365,7 +365,31 @@ class Handler(BaseHTTPRequestHandler):
                 import history
                 return self._json({"missions": history.mission_grid(q.get("uid", [""])[0])})
             if url.path == "/api/history":
-                return self._json({"rows": read_csv(HISTORY / "deployments.csv")})
+                import history
+                edits = history.read_edits()
+                rows = read_csv(HISTORY / "deployments.csv")
+                for r in rows:                    # show the fixed values; keep the originals for "undo"
+                    e = edits.get(r.get("uid", ""), {})
+                    r["edited"] = sorted(k for k in e if not k.startswith("player:") and k != "names_ok")
+                    r["names_flag"] = "" if e.get("names_ok") else r.get("check", "")
+                    r["renamed"] = {k[7:]: v for k, v in e.items() if k.startswith("player:")}
+                    if r["renamed"]:
+                        r["orig_players"] = r.get("players", "")
+                        r["players"] = ", ".join(r["renamed"].get(p.strip(), p.strip())
+                                                 for p in r.get("players", "").split(",") if p.strip())
+                    for f, v in e.items():
+                        if f.startswith("player:") or f == "names_ok":
+                            continue
+                        r["orig_" + f] = r.get(f, "")
+                        r[f] = v
+                import raids
+                try:
+                    from players import Roster
+                    known = sorted(set(Roster().order), key=str.lower)
+                except Exception:  # noqa: BLE001
+                    known = []
+                return self._json({"rows": rows, "planets": raids.planets(), "fronts": history.FRONT_NAMES,
+                                   "callsigns": known})
             if url.path == "/api/discord":
                 return self._json({"text": DISCORD.read_text(encoding="utf-8") if DISCORD.exists() else ""})
             if url.path == "/api/shot":
@@ -378,7 +402,7 @@ class Handler(BaseHTTPRequestHandler):
                 f = OUTPUT / "chart.umd.js"
                 f = f if f.exists() else HERE / "vendor" / "chart.umd.js"
                 return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8")
-            if url.path in ("/view/report.html", "/view/players.html", "/view/index.html", "/view/units.html",
+            if url.path in ("/view/report.html", "/view/players.html", "/view/index.html", "/view/units.html", "/view/raids.html",
                             "/view/index_beta.html", "/view/players_beta.html", "/view/units_beta.html",
                             "/view/raids_beta.html"):
                 name = url.path.rsplit("/", 1)[1]
@@ -477,6 +501,13 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as e:
                     return self._err(str(e))
                 return self._json({"ok": True, "left_out": n})
+            if path == "/api/history/edit":
+                import history
+                try:
+                    cur = history.set_edits(str(b.get("uid", "")), b.get("values") or {})
+                except ValueError as e:
+                    return self._err(str(e))
+                return self._json({"ok": True, "edited": sorted(cur)})
             if path == "/api/history/keep":
                 f = HISTORY / "deployments.csv"
                 rows = read_csv(f)

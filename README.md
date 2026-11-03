@@ -60,6 +60,9 @@ opens in your browser. Close the console window to stop it.
   answers and **Save & run report**. No spreadsheet program needed.
 * **Who is who** – edit `players.csv` (search, add, remove).
 * **History** – every deployment; untick *Count* to leave one out; add an old batch (stats.csv).
+  A **⚠ check names** badge means the player order typed in the form contradicts the names read on screen
+  (e.g. two players swapped) and some players could only be guessed: open *Edit*, look at the screenshots,
+  fix the names if needed and **Save** – that marks the deployment as reviewed.
 * **Share** – open the report / player lookup, Publish online, copy the Discord message or index.html.
 * **Settings & reset** – the Google Drive folder, open folders in Windows, Reset (archive / delete).
 
@@ -165,12 +168,12 @@ Personal milestones are on the player card. Everything is worked out from the hi
 deployment and team of the crossing); only "every member of a squad registered" is remembered in
 `history/milestones_reached.csv`, because the roster changes.
 
-**Now in beta: raids.** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
+**Raids (live).** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
 planet, start and end in **UTC** (the pages show Paris time). The deployments in the window are found for you:
 company / platoon raids keep only squads **hosted** by someone of that unit on that day; other planets and outside
 hosts are listed but not ticked; squads answering *Raid = Yes* in the form are ticked even on another planet.
-Tick / untick, save (`raids.csv`), Run report → `raids_beta.html` (turnout, guests, totals, records, squads) and a
-raid banner on the beta report for 7 days. Form answers tagged *Raid* that fit no declared raid are listed in the
+Tick / untick, save (`raids.csv`), Run report → `raids.html`, published with the report (turnout, turnout per
+platoon / squad / company, guests, totals, records, squads) and a raid banner on the report for 7 days. Form answers tagged *Raid* that fit no declared raid are listed in the
 Raids tab with a *Create raid* button. Raid deployments still count in all the normal stats.
 
 ## Discord inbox (in progress - branch `discord-intake`)
@@ -181,8 +184,11 @@ in `history\discord_waiting` until reviewed); `discord_inbox.py` reads the new m
 screenshots into `To_Process\discord` and writes the details to `history\discord_answers.csv`, which is read like
 the Google Form answers (both can be used together). What the bot must post: `docs/discord_intake.md`.
 
+The bot also marks each message it took: ✅ counted (confirmed / denied), 🔄 waiting for review (flagged),
+⚠️ couldn't be used (e.g. screenshots without a member list). It never posts or changes anything else.
+
 Setup: Developer Portal -> your app -> **Bot**: switch on *Message Content Intent*, copy the token (Reset Token).
-In your private server: give the bot *View Channel* + *Read Message History* on the inbox channel; turn on
+In your private server: give the bot *View Channel* + *Read Message History* + *Add Reactions* on the inbox channel; turn on
 Developer Mode (User Settings -> Advanced) and right-click the channel -> *Copy Channel ID*. Browser panel ->
 *Settings & reset -> Discord inbox*: paste both, **Save**, **Test connection**. Test without the register bot:
 post a message there with three screenshots and lines like `Host: Pengus`, `Members: Vicktor, Panini, Tiger`,

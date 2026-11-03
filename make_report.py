@@ -688,6 +688,12 @@ def main(argv=None):
               f"{len(ms['close'])} almost there")
     except Exception as e:  # noqa: BLE001 - milestones must never break the normal report
         print(f"Milestones not added: {e}")
+    # raids (declared in the browser panel -> Raids; raids.csv): raids.html + link + banner after a raid
+    try:
+        import raids
+        print(raids.build_page(Path(a.input), df, dep, a.title))
+    except Exception as e:  # noqa: BLE001 - raids must never break the normal report
+        print(f"Raids page not built: {e}")
     # BETA section: local test copies (index_beta / players_beta / units_beta), never published - see beta.py
     try:
         import beta

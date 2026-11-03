@@ -21,6 +21,8 @@ import datetime
 import hashlib
 from pathlib import Path
 
+import re
+
 import pandas as pd
 
 HERE = Path(__file__).resolve().parent
@@ -29,10 +31,13 @@ STATS_FILE = HISTORY / "stats.csv"
 DEPS_FILE = HISTORY / "deployments.csv"
 EXCL_FILE = HISTORY / "excluded.csv"      # player-missions left out of the averages (browser panel -> History)
 EXCL_FIELDS = ["uid", "file", "file_hash", "slot", "player"]
+OVR_FILE = HISTORY / "edits.csv"          # deployment details fixed by hand (browser panel -> History -> Edit)
+EDITABLE = ["date", "operation", "planet", "front"]
+FRONT_NAMES = ["Terminids", "Automatons", "Illuminates"]
 
 DEP_COLUMNS = ["uid", "keep", "date", "operation", "planet", "sector", "difficulty", "front", "success",
                "missions", "players", "kills", "deaths", "deployment", "deployment_id",
-               "files", "added", "updated"]
+               "files", "added", "updated", "check"]
 
 
 def file_uid(files) -> str:
@@ -94,6 +99,8 @@ def summarize(stats: pd.DataFrame, old_deps: pd.DataFrame) -> pd.DataFrame:
             deaths=int(pd.to_numeric(g.get("deaths"), errors="coerce").fillna(0).sum()),
             deployment=get("deployment"), deployment_id=get("deployment_id"),
             files=" | ".join(sorted(set(map(str, g["file"])))),
+            check=next((x.group(0) for m in g.get("name_check", pd.Series(dtype=str)).astype(object).fillna("").astype(str)
+                        if (x := re.search(r"player order[^()]*\([^()]*\)", m))), "")[:400],
             added=added.get(str(uid)) or now, updated=now))
     out = pd.DataFrame(rows, columns=DEP_COLUMNS)
     return out.sort_values(["date", "uid"], na_position="last").reset_index(drop=True)
@@ -212,7 +219,7 @@ def set_excluded(uid: str, file: str, slot, include: bool) -> int:
 
 def mission_grid(uid: str) -> list[dict]:
     """The deployment's missions with the 4 player slots, for the History tab (None = empty slot)."""
-    stats = _read(STATS_FILE)
+    stats = apply_edits(_read(STATS_FILE))
     if stats.empty:
         return []
     g = stats[stats["uid"].astype(str) == str(uid)]
@@ -225,15 +232,125 @@ def mission_grid(uid: str) -> list[dict]:
             s = int(float(r["slot"]))
             if 0 <= s < 4:
                 key = str(s)
-                slots[s] = dict(slot=s, player=str(r["player"]), kills=int(float(r.get("kills") or 0)),
+                k = pd.to_numeric(r.get("kills"), errors="coerce")
+                slots[s] = dict(slot=s, player=str(r["player"]), kills=0 if pd.isna(k) else int(k),
                                 left_out=(fh, key) in out_keys or (str(file), key) in out_keys)
         missions.append(dict(mission=int(float(m)), file=str(file), slots=slots))
     return missions
 
 
+def read_edits() -> dict:
+    """{uid: {field: value}} - details fixed by hand; they win over the form / register on every run."""
+    if not OVR_FILE.exists():
+        return {}
+    import csv
+    out: dict = {}
+    with open(OVR_FILE, encoding="utf-8-sig", newline="") as f:
+        for r in csv.DictReader(f):
+            f = r.get("field", "")
+            if f in EDITABLE or f.startswith("player:") or f == "names_ok":      # player:<name read> = the right callsign
+                out.setdefault(r.get("uid", ""), {})[f] = r.get("value", "")
+    return out
+
+
+def sector_of(planet: str) -> str:
+    f = HERE / "google_apps_script" / "planets_and_sectors.tsv"
+    try:
+        for line in f.read_text(encoding="utf-8").splitlines()[1:]:
+            p, _, s = line.partition("\t")
+            if p.strip().lower() == str(planet).strip().lower():
+                return s.strip()
+    except OSError:
+        pass
+    return ""
+
+
+def set_edits(uid: str, values: dict) -> dict:
+    """Save the fixed details of one deployment. An empty value (or the original one) removes the fix."""
+    import csv
+    deps = _read(DEPS_FILE)
+    orig = deps[deps["uid"].astype(str) == str(uid)] if not deps.empty else deps
+    if orig.empty:
+        raise ValueError("That deployment is not in the history.")
+    o = orig.iloc[0]
+    edits = read_edits()
+    cur = dict(edits.get(str(uid), {}))
+    for f in EDITABLE:
+        if f not in values:
+            continue
+        v = " ".join(str(values[f] or "").split())
+        if f == "date" and v:
+            try:
+                v = pd.Timestamp(v.replace("T", " ")).strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                raise ValueError(f"'{v}' is not a date and time.") from None
+        if f == "front" and v and v not in FRONT_NAMES:
+            raise ValueError("The front must be Terminids, Automatons or Illuminates.")
+        was = str(o.get(f, "") if pd.notna(o.get(f, "")) else "")
+        if f == "date":
+            was = was[:16]
+        if not v or v == was:
+            cur.pop(f, None)
+        else:
+            cur[f] = v
+    if "names_ok" in values:                       # "the names are right": hides the History warning
+        if values["names_ok"]:
+            cur["names_ok"] = "yes"
+        else:
+            cur.pop("names_ok", None)
+    for old_name, new_name in (values.get("players") or {}).items():
+        k, v = "player:" + str(old_name).strip(), " ".join(str(new_name or "").split())
+        if not v or v == str(old_name).strip():
+            cur.pop(k, None)
+        else:
+            cur[k] = v
+    if cur:
+        edits[str(uid)] = cur
+    else:
+        edits.pop(str(uid), None)
+    HISTORY.mkdir(exist_ok=True)
+    with open(OVR_FILE, "w", encoding="utf-8-sig", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["uid", "field", "value"])
+        w.writeheader()
+        for u, d in edits.items():
+            for f, v in d.items():
+                w.writerow(dict(uid=u, field=f, value=v))
+    return cur
+
+
+def apply_edits(stats: pd.DataFrame) -> pd.DataFrame:
+    edits = read_edits()
+    if stats.empty or not edits:
+        return stats
+    stats = stats.copy()
+    uid = stats["uid"].astype(str)
+    for u, d in edits.items():
+        m = uid == u
+        if not m.any():
+            continue
+        for f, v in d.items():
+            if f == "names_ok":
+                continue
+            if f.startswith("player:"):                       # rename one player in this deployment only
+                pm = m & (stats["player"].astype(str) == f[7:])
+                stats.loc[pm, "player"] = v
+                if "ocr_name" in stats.columns:               # (so the in-game name can't bring the old one back)
+                    stats["ocr_name"] = stats["ocr_name"].astype(object)
+                    stats.loc[pm, "ocr_name"] = v
+                continue
+            if f not in stats.columns:
+                stats[f] = ""
+            stats[f] = stats[f].astype(object)
+            stats.loc[m, f] = v
+            if f == "planet" and "sector" in stats.columns:
+                stats["sector"] = stats["sector"].astype(object)
+                stats.loc[m, "sector"] = sector_of(v)
+    return stats
+
+
 def report_rows() -> pd.DataFrame:
-    """History rows for the report: deployments marked keep = no are left out."""
-    stats = _read(STATS_FILE)
+    """History rows for the report: deployments marked keep = no are left out, details fixed by hand applied."""
+    stats = apply_edits(_read(STATS_FILE))
     if stats.empty:
         return stats
     deps = _read(DEPS_FILE)

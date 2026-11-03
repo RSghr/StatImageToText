@@ -24,7 +24,7 @@ function Items-To-Clear([bool]$withForms, [bool]$withHistory, [bool]$withPlayers
   if (Test-Path -LiteralPath 'To_Process') {
     $list += Get-ChildItem -LiteralPath 'To_Process' -Force | Where-Object { $_.Name -ne 'PUT_SCREENSHOTS_HERE.txt' }
   }
-  foreach ($p in @('output', 'htmlReport\index.html', 'htmlReport\players.html', 'htmlReport\units.html', 'htmlReport\chart.umd.js')) {
+  foreach ($p in @('output', 'htmlReport\index.html', 'htmlReport\players.html', 'htmlReport\units.html', 'htmlReport\raids.html', 'htmlReport\chart.umd.js')) {
     if (Test-Path -LiteralPath $p) { $list += Get-Item -LiteralPath $p -Force }
   }
   if ($withHistory) {

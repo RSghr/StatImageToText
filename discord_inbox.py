@@ -16,6 +16,9 @@ Every register is posted, at every status change; the newest message of a regist
 DENIED registers count (denied = the host loses the point, the deployment still counts). PENDING and FLAGGED ones
 wait aside (history/discord_waiting) until they are reviewed; "deleted"/"cancelled" removes one.
 
+On Discord the bot reacts to each message it took: a white check mark = counted (confirmed / denied),
+arrows = waiting for review (flagged), warning = couldn't be used (e.g. screenshots without a member list).
+
 Setup (browser panel -> Settings -> Discord inbox): the bot token (kept in .discord_token, never shared) and the
 channel ID. The bot needs "Message Content Intent" (Developer Portal -> Bot) and, in that channel, View Channel +
 Read Message History. Only the standard library is used.
@@ -61,6 +64,7 @@ KEYS = {  # accepted spellings in deployment.json / "Key: value" lines -> field
     "difficulty": "difficulty", "diff": "difficulty",
     "success": "success", "operationsuccess": "success", "completed": "success",
     "raid": "raid",
+    "order": "order", "screenorder": "order", "lefttoright": "order",
 }
 
 
@@ -92,14 +96,17 @@ def configured() -> bool:
 
 
 # ---------------------------------------------------------------- Discord REST (read only)
-def api(path: str, tok: str | None = None):
-    req = urllib.request.Request(API + path, headers={
+def api(path: str, tok: str | None = None, method: str = "GET"):
+    req = urllib.request.Request(API + path, method=method, headers={
         "Authorization": f"Bot {tok or token()}",
         "User-Agent": "DiscordBot (https://github.com/RSghr/StatImageToText, 1.0)"})
+    if method in ("PUT", "POST"):
+        req.add_header("Content-Length", "0")
     for attempt in range(5):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
-                return json.loads(r.read().decode("utf-8"))
+                body = r.read()
+                return json.loads(body.decode("utf-8")) if body else None
         except urllib.error.HTTPError as e:
             if e.code == 429:                       # rate limited: wait as told, then retry
                 try:
@@ -115,6 +122,37 @@ def api(path: str, tok: str | None = None):
         except urllib.error.URLError as e:
             raise InboxError(f"Discord not reachable ({e.reason})") from None
     raise InboxError("Discord kept asking to slow down - try again in a minute")
+
+
+# ---------------------------------------------------------------- reactions (the bot's only "write")
+DONE, WAIT, PROBLEM = "\u2705", "\U0001F504", "\u26A0\uFE0F"   # white_check_mark, arrows_clockwise, warning
+
+
+def react(chan: str, msg_id: str, emoji: str, remove: bool = False):
+    """Add (or take back) the bot's own reaction on a message. Needs 'Add Reactions' in the channel."""
+    e = urllib.parse.quote(emoji)
+    api(f"/channels/{chan}/messages/{msg_id}/reactions/{e}/@me", method="DELETE" if remove else "PUT")
+    time.sleep(0.3)                                # reactions are rate-limited per channel
+
+
+def mark(chan: str, rec: dict, say=print, state: dict | None = None):
+    """Show on Discord where each message of a register stands: counted, waiting for review, or a problem."""
+    if state is not None and state.get("off"):
+        return
+    want = DONE if counted(rec) else WAIT
+    try:
+        for mid in rec.get("msgs", []):
+            have = rec.setdefault("reacted", {}).get(mid)
+            if have == want:
+                continue
+            if have:
+                react(chan, mid, have, remove=True)
+            react(chan, mid, want)
+            rec["reacted"][mid] = want
+    except InboxError as e:
+        if state is not None:
+            state["off"] = True                   # don't try again for every message
+        say(f"  (reactions not added: {e} - give the bot 'Add Reactions' in that channel)")
 
 
 def download(url: str) -> bytes:
@@ -193,6 +231,13 @@ def images(msg: dict) -> list[dict]:
 
 
 def members_of(d: dict) -> list[str]:
+    """Players in stat-screen order, left to right: "order" if given (from the stat modal), else host + members."""
+    o = d.get("order")
+    if o:
+        o = [x for x in re.split(r"[,;\n]+", o)] if isinstance(o, str) else list(o)
+        o = [str(x).strip() for x in o if str(x).strip()]
+        if o:
+            return o[:4]
     m = d.get("members", [])
     if isinstance(m, str):
         m = [x for x in re.split(r"[,;\n]+", m)]
@@ -304,6 +349,8 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
     msgs = (fetch_messages or new_messages)(chan, st.get("last_id", "0"))
     added = updated = removed = shots = 0
     problems = []
+    rstate: dict = {}
+    touched: set = set()
     for msg in msgs:
         st["last_id"] = msg["id"]
         d = details(msg, fetch)
@@ -312,6 +359,12 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
         status = str(d.get("status") or (old or {}).get("status") or "").strip().lower()
         if status in DROPPED:
             if old:
+                for mid, emo in (old.get("reacted") or {}).items():   # take the bot's marks back
+                    if not rstate.get("off"):
+                        try:
+                            react(chan, mid, emo, remove=True)
+                        except InboxError:
+                            pass
                 remove_files(old)
                 del st["records"][key]
                 removed += 1
@@ -322,6 +375,11 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
             continue                                      # chat / unrelated message
         if not names:
             problems.append(f"message {msg['id']}: screenshots but no member list - skipped")
+            if not rstate.get("off"):
+                try:
+                    react(chan, msg["id"], PROBLEM)
+                except InboxError:
+                    pass
             continue
         posted = local_time(msg["timestamp"]) if not old else dt.datetime.fromisoformat(old["posted"])
         dep = "D" + posted.strftime("%Y%m%d%H%M%S")
@@ -337,6 +395,7 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
         for i, label in enumerate(NAME_FIELDS):
             rec[label] = names[i] if i < len(names) else ""
         rec.setdefault("files", [])
+        rec["msgs"] = list(dict.fromkeys(rec.get("msgs", []) + [msg["id"]]))
         if imgs:                                          # new screenshots replace the old ones of this deployment
             remove_files(rec)
             files, to = [], folder(rec)
@@ -355,10 +414,13 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
             rec["files"] = files
         place_files(rec)
         st["records"][key] = rec
+        touched.add(key)
         if old:
             updated += 1
         else:
             added += 1
+    for k in touched:                               # reactions: done / waiting on every message of the register
+        mark(chan, st["records"][k], say, rstate)
     write_answers({k: r for k, r in st["records"].items() if counted(r)})
     save_state(st)
     n_count = sum(1 for r in st["records"].values() if counted(r))
@@ -367,7 +429,7 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
                counted=n_count, waiting=n_wait, problems=problems)
     say(f"Discord inbox: {len(msgs)} new message(s) - {added} register(s) added, {updated} updated, {removed} removed, "
         f"{shots} screenshot(s) downloaded. In total: {n_count} counted (confirmed / denied), "
-        f"{n_wait} waiting (pending / flagged)")
+        f"{n_wait} waiting for review (flagged)")
     for p in problems:
         say("  ! " + p)
     return res
