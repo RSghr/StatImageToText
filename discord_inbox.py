@@ -187,9 +187,21 @@ def norm_key(k: str) -> str:
     return re.sub(r"[^a-z]", "", str(k).lower())
 
 
+def tidy(v):
+    """A value copied out of JSON text by hand: drop the quotes, brackets and trailing commas around it."""
+    if not isinstance(v, str):
+        return v
+    v = v.strip().rstrip(",").strip()
+    if v.startswith("[") or v.endswith("]"):
+        v = v.strip("[]")
+        return [x.strip().strip('"\'').strip() for x in v.split(",") if x.strip().strip('"\'').strip()] or ""
+    return v.strip('"\'').strip()
+
+
 def parse_fields(pairs) -> dict:
     d = {}
     for k, v in pairs:
+        k, v = tidy(k), tidy(v)
         f = KEYS.get(norm_key(k))
         if f and f not in d and v not in (None, ""):
             d[f] = v
@@ -205,8 +217,8 @@ def details(msg: dict, fetch=download) -> dict:
             except Exception:  # noqa: BLE001
                 pass
     content = msg.get("content") or ""
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.S)
-    if m:
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.S) or re.search(r"(\{.*\})", content, re.S)
+    if m:                                            # a JSON block, with or without the ``` around it
         try:
             return parse_fields(json.loads(m.group(1)).items())
         except ValueError:
@@ -369,6 +381,14 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
                 del st["records"][key]
                 removed += 1
             continue
+        if status and status not in COUNTED | WAITING:     # a typo or a status we don't know: say so, keep it aside
+            problems.append(f"register {key}: status '{status}' not understood (confirmed / denied / pending / "
+                            "flagged / deleted) - kept aside")
+            if not rstate.get("off"):
+                try:
+                    react(chan, msg["id"], PROBLEM)
+                except InboxError:
+                    pass
         names = members_of(d) or ([old[f] for f in NAME_FIELDS if old.get(f)] if old else [])
         imgs = images(msg)
         if not names and not imgs and not old:
@@ -429,7 +449,13 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
                counted=n_count, waiting=n_wait, problems=problems)
     say(f"Discord inbox: {len(msgs)} new message(s) - {added} register(s) added, {updated} updated, {removed} removed, "
         f"{shots} screenshot(s) downloaded. In total: {n_count} counted (confirmed / denied), "
-        f"{n_wait} waiting for review (flagged)")
+        f"{n_wait} kept aside")
+    for k, r in st["records"].items():                 # why each one is kept aside
+        if not counted(r):
+            s = r.get("status", "")
+            why = {"pending": "not reviewed yet", "flagged": "flagged by an officer - waiting for the host's fix"}.get(
+                s, f"status '{s}' not understood")
+            say(f"  - register {k} ({r.get('Operation Name', '')}): {why}")
     for p in problems:
         say("  ! " + p)
     return res

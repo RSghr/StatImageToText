@@ -44,9 +44,7 @@ The text of the message can be anything readable for humans (an embed is fine).
   "start": 1792876200,
   "planet": "Luxuriant",
   "enemy": "Terminids",
-  "difficulty": 10,
-  "success": true,
-  "raid": false
+  "difficulty": 10
 }
 ```
 
@@ -55,7 +53,10 @@ The text of the message can be anything readable for humans (an embed is fine).
   screen **left to right**. Sent with the screenshots; without it the program assumes host first, then `members`.
 * `start`: the operation start as a Unix timestamp (seconds) – the same number as in `<t:1792876200:F>`.
 * `enemy`: `Terminids`, `Automatons` or `Illuminates`.
+* Raids need nothing here: the raid planner in the stats panel finds them from the time, the host's unit and the planet.
 * Anything else you add is ignored. Unknown fields can be left out.
+* Best sent as the `deployment.json` attachment. JSON pasted in the message text (with or without ```json around it)
+  is read too.
 
 ## Important: re-upload the screenshots
 
