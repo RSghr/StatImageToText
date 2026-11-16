@@ -180,17 +180,42 @@ def planet_shares(dep: pd.DataFrame, top: int = 5) -> dict:
     return dict(labels=labels, deployments=values)
 
 
-def weekly(dep: pd.DataFrame) -> pd.DataFrame:
+def weekly(dep: pd.DataFrame, last: int = 0) -> pd.DataFrame:
+    """Deployments and kills per week (Monday start). last=N: only the N weeks up to this week."""
     d = dep[dep["date"].notna()]
     if d.empty:
         return pd.DataFrame(columns=["Week", "Deployments", "Kills"])
     wk = d["date"].dt.to_period("W-SUN").dt.start_time
     g = d.groupby(wk)
     t = pd.DataFrame({"Deployments": g.size(), "Kills": g["kills"].sum()})
-    full = pd.date_range(t.index.min(), t.index.max(), freq="7D")
+    end = t.index.max()
+    if last:
+        end = max(end, week_start() + pd.Timedelta(days=7))      # this week, even with nothing in it yet
+    full = pd.date_range(t.index.min(), end, freq="7D")
+    if last:
+        full = full[-last:]
     t = t.reindex(full, fill_value=0)
     t.index = t.index.strftime("%d %b")
     return t.reset_index().rename(columns={"index": "Week"})
+
+
+WEEK_TZ = "Europe/Paris"   # weeks run Monday 00:00 -> Sunday 23:59 in this time zone
+
+
+def week_start(now=None) -> pd.Timestamp:
+    """Monday 00:00 of LAST week (local time, no time zone - like the deployment dates):
+    the highlights cover last week plus whatever this week has beaten so far."""
+    from zoneinfo import ZoneInfo
+    from datetime import datetime
+    now = now or datetime.now(ZoneInfo(WEEK_TZ))
+    monday = pd.Timestamp(now.replace(tzinfo=None)).normalize() - pd.Timedelta(days=now.weekday())
+    return monday - pd.Timedelta(days=7)
+
+
+def this_week(df: pd.DataFrame, dep: pd.DataFrame, now=None):
+    start = week_start(now)
+    return (df[pd.to_datetime(df["date"], errors="coerce") >= start],
+            dep[pd.to_datetime(dep["date"], errors="coerce") >= start])
 
 
 def highlights(df: pd.DataFrame, dep: pd.DataFrame) -> list[dict]:
@@ -293,7 +318,8 @@ def js_data(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=1).replace("</", "<\\/")
 
 
-def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="", scroll=False) -> str:
+def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="", scroll=False, rows: int = 0) -> str:
+    """rows: show only that many rows, the rest scrolls inside the box (header stays on top)."""
     dec = dec or {}
     if df.empty:
         return '<p class="muted">No data yet.</p>'
@@ -313,7 +339,8 @@ def table_html(df: pd.DataFrame, num_cols=(), dec=None, cls="", scroll=False) ->
                 else:
                     cells.append(f"<td>{html.escape(txt)}</td>")
         body.append("    <tr>" + "".join(cells) + "</tr>")
-    return (f'<div class="tw{" scroll" if scroll else ""}">\n <table class="{cls}">\n  <thead><tr>{head}</tr></thead>\n'
+    fit = f' data-rows="{rows}"' if rows and len(df) > rows else ""
+    return (f'<div class="tw{" scroll" if scroll or fit else ""}"{fit}>\n <table class="{cls}">\n  <thead><tr>{head}</tr></thead>\n'
             f'  <tbody>\n' + "\n".join(body) + '\n  </tbody>\n </table>\n</div>')
 
 
@@ -339,6 +366,7 @@ def icon(name):
 
 def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
     frk = fr[fr["Front"] != "Unknown"]           # charts show known fronts; the table shows all
+    wk4 = weekly(dep, last=4)                     # the chart shows the last 4 weeks; the Excel file has them all
     data = dict(
         time=dict(labels=list(ot["Deployment start"].str[:10]), ops=list(ot["Operation"]),
                   kills=list(map(int, ot["Total Kill count"])), deaths=list(map(int, ot["Total Casualties"])),
@@ -347,17 +375,17 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
                     kd=[round(v, 2) if v is not None else None for v in frk["K/D"]]),
         diff=dict(labels=[str(int(d)) for d in dif["Difficulty"]], deployments=list(map(int, dif["Deployments"]))),
         planets=planet_shares(dep),
-        weekly=dict(labels=list(wk["Week"]), deployments=list(map(int, wk["Deployments"]))),
+        weekly=dict(labels=list(wk4["Week"]), deployments=list(map(int, wk4["Deployments"]))),
     )
     tiles = [
         ("Confirmed kills", fmt_num(h["kills"]), "across all fronts"),
-        ("Casualties", fmt_num(h["deaths"]), f"K/D {fmt_num(h['kd'], 1)}"),
+        ("Casualties", fmt_num(h["deaths"]), "Helldivers fallen"),
+        ("Kill/Death ratio", fmt_num(h["kd"], 1) if h["kd"] else "-", "kills per casualty"),
+        ("Accuracy", (fmt_num(h["accuracy"], 1) + "%") if h["accuracy"] else "-", f"{fmt_num(h['shots'])} shots fired"),
         ("Deployments", fmt_num(h["deployments"]), f"{fmt_num(h['missions'])} missions"),
         ("Helldivers", fmt_num(h["helldivers"]), "took part"),
-        ("Accuracy", (fmt_num(h["accuracy"], 1) + "%") if h["accuracy"] else "-", f"{fmt_num(h['shots'])} shots fired"),
-        ("Stratagems", fmt_num(h["stratagems"]), "called in"),
         ("Samples", fmt_num(h["samples"]), "extracted"),
-        ("Reinforcements", fmt_num(h["reinforcements"]), "comrades brought back"),
+        ("Stratagems", fmt_num(h["stratagems"]), "called in"),
     ]
     tiles_html = "\n".join(f'<div class="tile"><div class="tl">{html.escape(a)}</div><div class="tv">{b}</div>'
                          f'<div class="ts">{html.escape(c)}</div></div>' for a, b, c in tiles)
@@ -367,7 +395,7 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
         f'    <div class="hv"><b>{html.escape(x["value"])}</b> {html.escape(x["unit"])}</div>\n'
         f'    <div class="hp">{html.escape(x["player"])}</div>\n'
         f'    <div class="hw">{html.escape(x["where"])}{" · " + html.escape(x["date"]) if x["date"] else ""}</div>\n'
-        f'  </div>\n</div>' for x in hl) or '<p class="muted">No data yet.</p>'
+        f'  </div>\n</div>' for x in hl) or '<p class="muted">No deployments this week yet.</p>'
 
     fr_t = fr[["Front", "Deployments", "Missions", "Kills", "Casualties", "K/D", "Accuracy %", "Kills per mission",
                "Avg difficulty"]]
@@ -407,7 +435,7 @@ def build_html(title, h, ot, fr, dif, pl, wk, hl, dep, chart_js: str) -> str:
                                                                "Accuracy %", "Kills per mission", "Avg difficulty"),
                                                dec={"K/D": 2, "Accuracy %": 1, "Avg difficulty": 1})) \
         .replace("{{PLANET_TABLE}}", table_html(pl, num_cols=("Deployments", "Kills", "Casualties", "K/D"),
-                                                dec={"K/D": 2})) \
+                                                dec={"K/D": 2}, rows=10)) \
         .replace("{{DEPLOY_TABLE}}", table_html(dep_t, num_cols=("Missions", "Kills", "Casualties", "K/D"),
                                                 dec={"K/D": 2}, cls="log", scroll=True)) \
         .replace("{{NOTES}}", f'<ul class="notes">{notes_html}</ul>' if notes else "") \
@@ -483,7 +511,7 @@ def discord_text(title: str, h: dict, fr: pd.DataFrame, hl: list[dict], limit: i
         tot = known["Deployments"].sum()
         parts = [f"{FRONT_EMOJI.get(f, '')} {f} {round(100 * d / tot)}%" for f, d in zip(known["Front"], known["Deployments"])]
         lines += ["", "**Fronts:** " + "  \u00B7  ".join(parts)]
-    lines += ["", "## \U0001F3C5 Highlights"]
+    lines += ["", "## \U0001F3C5 Weekly highlights!"]
     for x in hl:
         where = x["where"] + (f", {x['date']}" if x["date"] else "")
         emo = EMOJI.get(x["icon"], "-")
@@ -654,7 +682,7 @@ def main(argv=None):
         df = load(src)
     dep = deployments(df)
     ot, fr, dif, pl, wk = over_time(dep), by_front(dep), by_difficulty(dep), by_planet(dep), weekly(dep)
-    hl = highlights(df, dep)
+    hl = highlights(*this_week(df, dep))          # last week + anything beaten this week
     h = headline(df, dep)
     # Chart.js is a separate file next to the pages (keeps the pages readable); copied with them everywhere
     shutil.copyfile(Path(__file__).resolve().parent / "vendor" / "chart.umd.js", Path(a.input) / "chart.umd.js")
@@ -796,7 +824,7 @@ details summary{cursor:pointer;color:var(--text2);margin:8px 0}
  <div class="card"><h3>Confirmed kills</h3><div class="sub">Cumulative, per deployment</div><div class="chart"><canvas id="cKills" role="img" aria-label="Cumulative kills over time"></canvas></div></div>
  <div class="card"><h3>Casualties</h3><div class="sub">Cumulative, per deployment</div><div class="chart"><canvas id="cDeaths" role="img" aria-label="Cumulative casualties over time"></canvas></div></div>
  <div class="card"><h3>Kill / casualty ratio</h3><div class="sub">Running ratio since the first deployment</div><div class="chart"><canvas id="cKD" role="img" aria-label="Kill to casualty ratio over time"></canvas></div></div>
- <div class="card"><h3>Deployments per week</h3><div class="sub">Weeks start on Monday</div><div class="chart"><canvas id="cWeek" role="img" aria-label="Deployments per week"></canvas></div></div>
+ <div class="card"><h3>Deployments per week</h3><div class="chart"><canvas id="cWeek" role="img" aria-label="Deployments per week"></canvas></div></div>
 </div>
 
 <h2>Fronts</h2>
@@ -824,8 +852,13 @@ details summary{cursor:pointer;color:var(--text2);margin:8px 0}
 
 <h2>Planets</h2>
 {{PLANET_TABLE}}
+<script>/* boxes showing N rows: the rest scrolls */
+function fitRows(){ document.querySelectorAll('.tw[data-rows]').forEach(b=>{ const n=+b.dataset.rows;
+  const rs=b.querySelectorAll('tbody tr'); const h=b.querySelector('thead'); if(rs.length<=n) return;
+  b.style.maxHeight=(h.offsetHeight + rs[n-1].offsetTop + rs[n-1].offsetHeight - rs[0].offsetTop + 2)+'px'; }); }
+fitRows(); addEventListener('resize', fitRows);</script>
 
-<h2>Highlights</h2>
+<h2>Weekly highlights!</h2>
 <div class="hls">{{HIGHLIGHTS}}</div>
 
 <h2>Deployment log</h2>

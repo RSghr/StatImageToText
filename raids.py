@@ -3,7 +3,7 @@ raids.py - regiment / company / platoon raids (raids.html, published with the re
 
 You declare a raid (browser panel -> Raids, saved in raids.csv): name, unit, planet, start and end in UTC.
 The deployments are then found automatically:
-  * inside the time window (UTC, shown in Paris time on the pages)
+  * inside the time window (UTC; the pages show it in each reader's own time zone)
   * regiment raid: any host - company / platoon raid: the HOST was in that unit on that day
   * on the raid planet (if one is set) - deployments elsewhere are listed but not ticked
   * deployments tagged "Raid" in the Google Form are ticked even if the planet differs
@@ -262,6 +262,7 @@ def raid_data(raid: dict, df: pd.DataFrame, rows: list[dict], units) -> dict | N
                 planet=raid.get("planet", ""), notes=raid.get("notes", ""),
                 start=a.strftime("%d %b %Y %H:%M"), end=b.strftime("%d %b %Y %H:%M") if b.date() != a.date()
                 else b.strftime("%H:%M"), ts=a.isoformat(), end_ts=b.isoformat(),
+                start_utc=raid["start_utc"], end_utc=raid["end_utc"],
                 squads_n=len(squads), helldivers=len(people), members=len(members), guests=sorted(guests),
                 size=size, turnout=round(100 * len(members) / size) if size else None,
                 kills=k, deaths=d, kd=round(k / d, 2) if d else None, samples=int(g["samples_extracted"].sum()),
@@ -336,9 +337,15 @@ function lighten(hex){ // 35% white on dark backgrounds, so a dark blue stays vi
   if(!/^#[0-9a-f]{6}$/i.test(hex) || !DARK()) return hex;
   const n=parseInt(hex.slice(1),16), m=c=>Math.round(c*0.65+255*0.35);
   return '#'+[n>>16,(n>>8)&255,n&255].map(m).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+// times in the reader's own time zone
+function tm(utc, o){ return new Date(utc+':00Z').toLocaleString('en-GB', o); }
+function when(r){ if(!r.start_utc) return r.start+(r.end?' - '+r.end:'');
+  const D={day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}, T={hour:'2-digit',minute:'2-digit'};
+  const a=tm(r.start_utc,D), sameDay=tm(r.start_utc,{dateStyle:'short'})===tm(r.end_utc,{dateStyle:'short'});
+  return a+' - '+tm(r.end_utc, sameDay?T:D); }
 function tile(a,b,c){ const t=el('div','tile'); t.append(el('div','tl',a), el('div','tv',b)); if(c) t.append(el('div','ts',c)); return t; }
 document.getElementById('intro').textContent = D.raids.length
-  ? 'Grand occasions: a unit deploys together on the same planet. Times in Paris time. Squadmates from outside the unit count as guests.'
+  ? 'Grand occasions: a unit deploys together on the same planet. Squadmates from outside the unit count as guests.'
   : 'No raid yet.';
 const root = document.getElementById('root');
 D.raids.forEach(r=>{
@@ -346,7 +353,7 @@ D.raids.forEach(r=>{
   const h = el('div','rh'); const lab=el('span','rlab', r.label);
   if(r.color){ lab.style.background=r.color; lab.style.color='#fff'; s.style.borderTop='4px solid '+lighten(r.color); s.style.paddingTop='12px'; }
   h.append(lab, el('h3',null,r.name)); s.append(h);
-  s.append(el('div','rmeta', [r.start+(r.end?' - '+r.end:''), r.planet, r.notes].filter(Boolean).join(' · ')));
+  s.append(el('div','rmeta', [when(r), r.planet, r.notes].filter(Boolean).join(' · ')));
   if(r.badges.length){ const b=el('div','badges'); r.badges.forEach(x=>b.append(el('span',null,'★ '+x))); s.append(b); }
   const t = el('div','tiles6');
   t.append(tile('Squads', fmt(r.squads_n), 'deployed'),
@@ -399,8 +406,12 @@ def banner(data: dict, href: str) -> str:
         col = r.get("color") or ""
         style = (f' style="--rc:{H.escape(col)}"' if col else "")
         out.append(f'<div class="raidnow{" rc" if col else ""}"{style}><span class="rlab">{H.escape(r["label"])}</span><div><b>{H.escape(r["name"])}</b>'
-                   f'<div class="m">{H.escape(r["start"])} · {H.escape(r["planet"])} · {" · ".join(bits)}</div></div>'
+                   f'<div class="m"><span class="rtime" data-utc="{H.escape(r.get("start_utc", ""))}">{H.escape(r["start"])}</span> · {H.escape(r["planet"])} · {" · ".join(bits)}</div></div>'
                    f'<a href="{href}#raid-{H.escape(r["id"])}">See the raid &rarr;</a></div>')
+    if out:   # show the start in the reader's own time zone
+        out.append("<script>document.querySelectorAll('.rtime[data-utc]').forEach(e=>{const u=e.dataset.utc;"
+                   "if(u)e.textContent=new Date(u+':00Z').toLocaleString('en-GB',{day:'2-digit',month:'short',"
+                   "year:'numeric',hour:'2-digit',minute:'2-digit'})})</script>")
     return "".join(out)
 
 

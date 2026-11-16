@@ -169,7 +169,7 @@ deployment and team of the crossing); only "every member of a squad registered" 
 `history/milestones_reached.csv`, because the roster changes.
 
 **Raids (live).** Browser panel → *Raids*: name, unit (regiment / company / platoon, from the roster),
-planet, start and end in **UTC** (the pages show Paris time). The deployments in the window are found for you:
+planet, start and end in **UTC** (the pages show each reader's own time). The deployments in the window are found for you:
 company / platoon raids keep only squads **hosted** by someone of that unit on that day; other planets and outside
 hosts are listed but not ticked; squads answering *Raid = Yes* in the form are ticked even on another planet.
 Tick / untick, save (`raids.csv`), Run report → `raids.html`, published with the report (turnout, turnout per
@@ -225,7 +225,7 @@ fixed anything, then **Publish online**.
 4. Click **Run report** (or double-click **`run.bat`**). It reads the screenshots, then builds the report and opens it in your browser.
 
 **Form fields used** (new *505th Data Deployment Registry* form): Operation Name, **Operation starting date as a
-Discord timestamp** (`<t:1734098400:F>` from sesh.fyi/timestamp – shown in Paris time, change with
+Discord timestamp** (`<t:1734098400:F>` from sesh.fyi/timestamp – shown in the report's time zone, change with
 `--timezone "Europe/London"`), Difficulty, Planet, Host/Attendee 1–3 Callsign, Enemy, Operation Success, notes. The **e-mail address and the suggestions box are never read or copied** into any output.
 A start date that isn't a valid timestamp falls back to the submission time and is reported in the Deployments sheet.
 

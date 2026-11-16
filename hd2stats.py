@@ -33,12 +33,17 @@ import numpy as np  # noqa: E402
 import pytesseract  # noqa: E402
 from PIL import Image  # noqa: E402
 
-__version__ = "1.6"
+__version__ = "1.7"
 HERE = Path(__file__).resolve().parent
 SETTINGS_FILE = HERE / "settings.json"
 
 
 FILE_HASH: dict = {}   # screenshot file name -> content fingerprint (duplicates are read once)
+
+
+def looks_like_copy(name: str) -> bool:
+    """'shot (1).png', 'Copy of shot.png', 'shot - Copie.png': the duplicate rather than the original."""
+    return bool(re.search(r"\(\d+\)|\bcop(y|ie)\b", Path(name).stem, re.I))
 
 
 def file_hash(p: Path) -> str:
@@ -300,16 +305,21 @@ def isolate_digits(band: np.ndarray, thr: int):
     if not glyphs:
         return None
     glyphs.sort()
+    # A thin bright line of the card art at the right (a gold ring, a light edge) is not a digit:
+    # skip lone glyphs whose height doesn't match the glyphs just left of them.
+    while len(glyphs) >= 2:
+        last, prev = glyphs[-1], glyphs[-2]
+        if last[2] <= 0.2 * last[3] and abs(last[3] - prev[3]) > 0.25 * prev[3]:
+            glyphs.pop()
+        else:
+            break
     run = [glyphs[-1]]                      # start from the rightmost glyph
-    for g in reversed(glyphs[:-1]):
-        if run[0][0] - (g[0] + g[2]) < 0.55 * H:
+    ref = glyphs[-1][3]
+    for g in reversed(glyphs[:-1]):         # digits of one number: close together, same height
+        if run[0][0] - (g[0] + g[2]) < 0.55 * H and 0.7 * ref <= g[3] <= 1.3 * ref:
             run.insert(0, g)
         else:
             break
-    # all real glyphs of a number have about the same height
-    hs = sorted(g[3] for g in run)
-    hmax = hs[-1]
-    run = [g for g in run if g[3] >= 0.7 * hmax]
     gx0 = min(g[0] for g in run)
     gx1 = max(g[0] + g[2] for g in run)
     gy0 = min(g[1] for g in run)
@@ -553,6 +563,7 @@ def read_player(bgr, lay: Layout, panel: int, passes: int):
     """
     bands = {st: value_band(bgr, lay, panel, r) for r, st in enumerate(STATS)}
     cands: dict[str, list] = {st: [] for st in STATS}   # (value, problem, source)
+    bright: dict[str, bool] = {}
     raws: dict[str, list] = {st: [] for st in STATS}
 
     def add(st, res, src):
@@ -565,12 +576,17 @@ def read_player(bgr, lay: Layout, panel: int, passes: int):
         b = bands[st]
         if b is None:
             return
+        # light card art behind the number (white / light grey armour): the usual threshold
+        # takes the background too, so read only the brightest pixels there
+        light = bright.setdefault(st, float(np.median(cv2.cvtColor(b[:, int(b.shape[1] * 0.6):],
+                                                                  cv2.COLOR_BGR2GRAY))) > 170)
+        t0, t1 = (225, 210) if light else (165, 140)
         if level == 0:
-            add(st, read_glyphs(b, st, 165), "glyph")
+            add(st, read_glyphs(b, st, t0), "glyph")
         elif level == 1:
-            add(st, read_glyphs(b, st, 140), "glyph140")
+            add(st, read_glyphs(b, st, t1), "glyph140")
             up = cv2.resize(b, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-            add(st, read_glyphs(up, st, 165), "glyph2x")
+            add(st, read_glyphs(up, st, t0), "glyph2x")
         elif level == 2:
             add(st, read_tesseract(b, st, VARIANTS[0]), "tess")
             add(st, read_tesseract(b, st, VARIANTS[2]), "tess8")
@@ -683,6 +699,11 @@ def read_player(bgr, lay: Layout, panel: int, passes: int):
         for st in trio:                       # the cross-check confirms them
             if flags.get(st, "").startswith("readings disagree"):
                 flags.pop(st)
+    # kills far too low for the shots that hit (a misread "1"): ask instead of trusting it
+    k, hit = values.get("kills"), values.get("shots_hit")
+    if k is not None and hit and hit >= 100 and k * 30 < hit and not flags.get("kills"):
+        flags["kills"] = f"{k} kill(s) for {hit} shots hit looks wrong - please check (readings: " + \
+                         " / ".join(raws["kills"]) + ")"
     # a correction that passes the check is reliable: keep it as info only
     info = {st: m for st, m in flags.items() if m.startswith("corrected")}
     for st in info:
@@ -808,6 +829,7 @@ FORM_COLUMNS = {
     "planet": ["Planet"],
     "operation": ["Operation Name", "Operation"],
     "notes": ["Any notes", "Notes"],
+    "crash_note": ["Were any of your missions affected", "Crashes"],
     "success": ["Operation Success", "Success"],
     "raid": ["Raid", "Was this a raid", "Raid deployment"],
 }
@@ -976,7 +998,11 @@ def load_form(path: Path | None):
                          planet=str(get("planet")).strip(), operation=str(get("operation")).strip(),
                          success=str(get("success")).strip(),
                          raid=str(get("raid")).strip(),
-                         form_notes=str(get("notes")).strip()))
+                         form_notes=" | ".join(x for x in (
+                             str(get("notes")).strip(),
+                             ("Missions affected by crashes / players leaving: "
+                              + re.sub(r"\.0\b", "", str(get("crash_note")).strip()))
+                             if str(get("crash_note")).strip().lower() not in ("", "no", "non", "nan") else "") if x)))
     print(f"Form: {len(rows)} answers read from {path.name}")
     return rows
 
@@ -1202,10 +1228,11 @@ ORDER_CONFLICT: list = []   # filled by name_players: why the form's player orde
 
 
 def name_players(mrows, callsigns: list[str], roster=None, uploader: str = "",
-                 trust_order: bool | None = None) -> tuple[dict, dict]:
+                 trust_order: bool | None = None, seen: list | None = None) -> tuple[dict, dict]:
     """Map the rows of one mission (one per panel) to callsigns -> ({row index: callsign}, {row index: how}).
 
     1. players.csv: the in-game name read on screen is a known name of a callsign ("alias")
+    1b. seen: the same in-game name was placed in another mission of this deployment ("seen")
     2. the in-game name looks like one of the form's callsigns ("name")
     2a. same number of panels as callsigns and trust_form_order on: panel k = k-th callsign of the form
         ("form" - the hosts' rule: callsigns typed in screenshot order). Names on screen still win.
@@ -1225,6 +1252,17 @@ def name_players(mrows, callsigns: list[str], roster=None, uploader: str = "",
             out[idx], how[idx] = (match or cs), "alias"
             if match:
                 used.add(norm_cs(match))
+    for ocr_seen, cs in (seen or []):          # names learnt from the other missions of the deployment
+        st = name_tokens(ocr_seen)
+        match = next((c for c in calls if norm_cs(c) == norm_cs(cs)), None)
+        if not st or not match or norm_cs(match) in used:
+            continue
+        for idx, r in mrows.iterrows():
+            rt = name_tokens(r.get("ocr_name", ""))
+            if idx not in out and rt and any(tokens_match(x, y) for x in st for y in rt):
+                out[idx], how[idx] = match, "seen"
+                used.add(norm_cs(match))
+                break
     pairs = []
     for idx, r in mrows.iterrows():
         if idx in out:
@@ -1867,9 +1905,20 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
         sure: dict = defaultdict(Counter)     # slot -> callsigns recognised for certain in this deployment
         guessed = []                          # (row, callsign, in-game name) placed by panel order only
         conflicts = []                        # missions where the form's order contradicts the names on screen
-        for _, m in df[df["deployment"] == key].groupby("mission"):
+        # missions with the whole squad on screen first: the names placed there help the missions
+        # where someone was missing (a crash, a late join) - the panels shift, the in-game names don't
+        n_calls = len([c for c in fr["names"] if clean_callsign(c)])
+        missions = sorted(df[df["deployment"] == key].groupby("mission"), key=lambda t: (len(t[1]) != n_calls, t[0]))
+        seen = []                             # (in-game name, callsign) placed in this deployment
+        by_name: dict = defaultdict(Counter)  # slot -> callsigns read on screen there (full-squad missions)
+        by_form = []                          # rows placed only by the form's order (full-squad missions)
+        for _, m in missions:
             uploader = next((up_of.get(f, "") for f in m["file"] if up_of.get(f)), "")
-            names, how = name_players(m, fr["names"], roster, uploader)
+            names, how = name_players(m, fr["names"], roster, uploader, seen=seen)
+            for idx, cs in names.items():
+                o = str(m.at[idx, "ocr_name"] or "")
+                if how.get(idx) in ("alias", "seen", "name", "form") and o and o != "nan":
+                    seen.append((o, cs))
             if any(h == "order" for h in how.values()):   # some players could only be guessed: worth a look
                 conflicts += [c for c in ORDER_CONFLICT if c not in conflicts]
             if roster is not None:                # panels the form doesn't explain: players.csv
@@ -1883,12 +1932,34 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
                 ocr = str(df.at[idx, "ocr_name"] or "")
                 if ocr == "nan":
                     ocr = ""
+                if len(m) == n_calls:
+                    if how[idx] in ("alias", "seen", "name"):
+                        by_name[int(df.at[idx, "slot"])][cs] += 1
+                    elif how[idx] == "form":
+                        by_form.append(idx)
                 if how[idx] == "order":
                     guessed.append((idx, cs, ocr))
                 else:
                     sure[int(df.at[idx, "slot"])][cs] += 1
                     if how[idx] in ("name", "last") and roster is not None:
                         roster.learn(ocr, cs)
+        # The form's order in a mission where the names couldn't be read, against the names read on screen in
+        # the other missions (same squad, same panels): trust the names - swap the two players placed by order.
+        for idx in by_form:
+            slot, cs = int(df.at[idx, "slot"]), df.at[idx, "player"]
+            want = by_name.get(slot)
+            if not want or len(want) != 1 or next(iter(want)) == cs:
+                continue
+            want = next(iter(want))
+            other = [j for j in by_form if j != idx and df.at[j, "file"] == df.at[idx, "file"]
+                     and df.at[j, "player"] == want]
+            if other:
+                j = other[0]
+                df.at[j, "player"], df.at[idx, "player"] = cs, want
+                for r in (idx, j):
+                    was = df.at[r, "name_check"]
+                    was = "" if pd.isna(was) else str(was)
+                    df.at[r, "name_check"] = "; ".join(x for x in (was, "placed by the names read in the other missions") if x)
         if conflicts:                             # flag the whole deployment for a look in the History tab
             msg = "player order in the form doesn't match the names on screen (" + " / ".join(conflicts) + ")"
             for idx in df.index[df["deployment"] == key]:
@@ -1900,8 +1971,9 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
         for idx, cs, ocr in guessed:
             slot = int(df.at[idx, "slot"])
             known = sure.get(slot)
-            if known and len(known) == 1:
-                cs = next(iter(known))
+            same = df.index[(df["file"] == df.at[idx, "file"]) & (df.index != idx)]
+            if known and len(known) == 1 and next(iter(known)) not in set(df.loc[same, "player"]):
+                cs = next(iter(known))   # (not when that player is already on another panel of this mission)
                 df.at[idx, "player"] = cs
                 if roster is not None and ocr:
                     roster.learn(ocr, cs)
@@ -1951,12 +2023,13 @@ def write_outputs(all_rows, out_dir: Path, form_rows, groups, errors, tokens=Non
         if roster is not None and alias_name:
             roster.learn(alias_name, cs)
     df = df.merge(deps[["deployment", "deployment_id", "date", "operation", "planet", "sector", "difficulty", "front",
-                        "success", "raid"]], on="deployment", how="left")
+                        "success", "raid", "form_notes"]].rename(columns={"form_notes": "host_notes"}),
+                  on="deployment", how="left")
 
     front_cols = ["deployment", "deployment_id", "date", "operation", "planet", "sector", "difficulty", "front", "success",
                   "raid", "mission", "file", "slot", "player", "ocr_name"]
     front_cols = [c for c in front_cols if c in df.columns]
-    df = df[front_cols + STATS + ["flagged_stats", "notes", "name_check", "image_check"]]
+    df = df[front_cols + STATS + ["flagged_stats", "notes", "name_check", "image_check", "host_notes"]]
     df["file_hash"] = df["file"].map(FILE_HASH).astype(object).fillna("")
 
     df.to_csv(out_dir / "stats.csv", index=False, encoding="utf-8-sig")
@@ -2100,6 +2173,13 @@ def main(argv=None):
     # both places (same name and size) is read once
     paths, seen_img = [], {}
     dupes = []
+    # a file's fingerprint is kept with its size and date: only new or changed files are read again
+    hash_file = HERE / "history" / "hash_cache.json"
+    try:
+        hashes = json.loads(hash_file.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        hashes = {}
+    new_hashes = {}
     for folder, recursive in ((drive, True), (src if src.is_dir() else None, args.recursive)):
         if folder is None:
             continue
@@ -2108,11 +2188,25 @@ def main(argv=None):
         for p in sorted(it):
             if not (p.is_file() and p.suffix.lower() in IMG_EXT):
                 continue
-            sig = file_hash(p)              # same picture = same content, whatever its name
+            if any(part.startswith("_") for part in p.relative_to(folder).parts[:-1]):
+                continue                    # _duplicates/ and other folders set aside by hand
+            try:
+                st = p.stat()
+                hk = f"{p.resolve()}|{st.st_size}|{int(st.st_mtime)}"
+            except OSError:
+                continue
+            sig = hashes.get(hk) or file_hash(p)   # same picture = same content, whatever its name
             if not sig:
                 continue
+            new_hashes[hk] = sig
             if sig in seen_img:
-                dupes.append((p.name, seen_img[sig].name))
+                q = seen_img[sig]
+                if looks_like_copy(q.name) and not looks_like_copy(p.name):   # keep the original name
+                    paths[paths.index(q)] = p
+                    seen_img[sig], FILE_HASH[p.name] = p, sig
+                    FILE_HASH.pop(q.name, None)
+                    p, q = q, p
+                dupes.append((p, q, sig))
                 continue
             seen_img[sig] = p
             FILE_HASH[p.name] = sig
@@ -2120,9 +2214,28 @@ def main(argv=None):
             found += 1
         if folder is drive:
             print(f"Google Drive folder: {drive}  ({found} screenshots)")
-    if dupes:
-        print(f"{len(dupes)} duplicate screenshot(s) skipped (same picture as another file): "
-              + ", ".join(f"{a} = {b}" for a, b in dupes[:5]) + (" ..." if len(dupes) > 5 else ""))
+    if new_hashes != hashes:
+        try:
+            hash_file.parent.mkdir(exist_ok=True)
+            hash_file.write_text(json.dumps(new_hashes, indent=0), encoding="utf-8")
+        except OSError:
+            pass
+    # duplicates: the copy is skipped (never read twice); the panel's Check tab asks what to do with it
+    try:
+        ok = set((HERE / "history" / "duplicates_ok.txt").read_text(encoding="utf-8").split())
+    except OSError:
+        ok = set()
+    todo_d = [dict(file=p.name, path=str(p.resolve()), same_as=q.name, same_as_path=str(q.resolve()), hash=h)
+              for p, q, h in dupes if h not in ok]
+    try:
+        (HERE / "history").mkdir(exist_ok=True)
+        (HERE / "history" / "duplicates.json").write_text(json.dumps(todo_d, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    if todo_d:
+        print(f"{len(todo_d)} duplicate screenshot(s) skipped (same picture as another file) - "
+              "see the Check tab: " + ", ".join(f"{d['file']} = {d['same_as']}" for d in todo_d[:3])
+              + (" ..." if len(todo_d) > 3 else ""))
     if not paths:
         if has_history:
             print("No screenshots to read - nothing new; the report is built from the history.")
@@ -2287,8 +2400,19 @@ def main(argv=None):
               "run again.")
     else:
         print("\nNothing left to check.")
+    # the panel's Check tab shows them, to look at and move aside
+    try:
+        ok = set((HERE / "history" / "unreadable_ok.txt").read_text(encoding="utf-8").splitlines())
+    except OSError:
+        ok = set()
+    try:
+        (HERE / "history").mkdir(exist_ok=True)
+        (HERE / "history" / "unreadable.json").write_text(json.dumps(
+            [dict(file=f, error=e) for f, e in errors if f not in ok], indent=1), encoding="utf-8")
+    except OSError:
+        pass
     if errors:
-        print(f"{len(errors)} images failed, see the Errors sheet")
+        print(f"{len(errors)} images failed, see the Errors sheet and the Check tab")
 
 
 if __name__ == "__main__":

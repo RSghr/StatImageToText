@@ -72,8 +72,17 @@ textarea{min-height:240px;font:13px/1.4 Consolas,ui-monospace,monospace}
 .slotbar div.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
 footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padding:12px 0 24px}
 tr.sub td{background:var(--bg)}
+.histT td{padding:6px 7px}.histT .nw{white-space:nowrap}.histT td:nth-child(6){min-width:140px}
+.histT .ab{display:flex;flex-direction:column;gap:4px}.histT .ab .b{padding:3px 8px;white-space:nowrap}
+.nbtn{margin-left:2px;cursor:pointer}.nbtn:disabled{opacity:.3}
+.notebox{background:var(--surface);color:var(--text);border:1px solid var(--line);max-width:560px;width:calc(100% - 32px);padding:18px 20px;cursor:default;max-height:70vh;overflow:auto}
+.notebox h3{margin:0 0 4px}.notebox p{margin:10px 0 0;white-space:pre-wrap}
 .warnb{font:inherit;font-size:12px;font-weight:700;margin-top:4px;padding:2px 8px;border:1px solid var(--warn);background:transparent;color:var(--warn);cursor:pointer;white-space:nowrap}
 .warnbox{border-left:3px solid var(--warn);padding:8px 10px;margin-bottom:10px;font-size:13px;background:color-mix(in srgb,var(--warn) 10%,transparent)}
+#dupBox,#unBox{border:1px solid var(--warn);padding:10px 12px;margin-bottom:12px}#dupBox h3,#unBox h3{margin:0 0 4px}
+.dup{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.dside{display:flex;flex-direction:column;gap:4px;max-width:260px}.dside img{width:240px;cursor:zoom-in;border:1px solid var(--line)}
+.dsame{font-size:22px;font-weight:700}.mono{font-family:ui-monospace,monospace;word-break:break-all}
 td.edited{background:color-mix(in srgb,var(--accent) 22%,transparent)!important}
 .pgrid{display:grid;gap:6px;align-items:center;padding:6px 0}
 .pcell{display:flex;gap:8px;align-items:center;border:1px solid var(--line);background:var(--surface);padding:6px 8px;font-size:13px;cursor:pointer;min-width:0}
@@ -133,6 +142,8 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
   <label class="chk small"><input type="checkbox" id="showDone"> Show answered lines</label>
   <span class="small muted" id="corrMsg"></span>
  </div>
+ <div id="dupBox" hidden></div>
+ <div id="unBox" class="dupbox" hidden></div>
  <div class="grid2">
   <div class="tw"><table><thead><tr><th>Screenshot</th><th>Slot</th><th>Player</th><th>Value</th><th>Read</th><th style="min-width:120px">Your answer</th></tr></thead>
    <tbody id="corrBody"></tbody></table></div>
@@ -165,8 +176,8 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
   <label class="b">Add an old batch (stats.csv)…<input type="file" id="histFile" accept=".csv" hidden></label>
   <span class="small muted" id="histMsg"></span>
  </div>
- <div class="tw"><table><thead><tr><th>Count</th><th>Date</th><th>Operation</th><th>Planet</th><th>Front</th>
-  <th>Screenshots</th><th>Players</th><th class="num">Kills</th><th class="num">Deaths</th><th></th></tr></thead><tbody id="histBody"></tbody></table></div>
+ <div class="tw"><table class="histT"><thead><tr><th>Count</th><th>Date</th><th>Operation</th><th>Planet</th>
+  <th>Shots · notes</th><th>Players</th><th class="num">Kills</th><th class="num">Deaths</th><th></th></tr></thead><tbody id="histBody"></tbody></table></div>
  <datalist id="knownCallsigns"></datalist>
 </section>
 
@@ -179,10 +190,10 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
  <div class="grid2">
   <div>
    <div class="card"><div class="row" style="justify-content:space-between"><h3>Raids</h3><button class="b" id="rdNew">+ New raid</button></div>
-    <div class="tw" style="margin-top:8px"><table><thead><tr><th>Start (Paris)</th><th>Raid</th><th>Unit</th><th>Planet</th><th class="num">Squads</th><th></th></tr></thead>
+    <div class="tw" style="margin-top:8px"><table><thead><tr><th>Start</th><th>Raid</th><th>Unit</th><th>Planet</th><th class="num">Squads</th><th></th></tr></thead>
     <tbody id="rdList"></tbody></table></div></div>
    <div class="card" id="rdTagCard" hidden><h3>Tagged "Raid" in the form, not in a raid yet</h3>
-    <div class="tw"><table><thead><tr><th>Start (Paris)</th><th>Operation</th><th>Squad</th><th>Planet</th><th></th></tr></thead><tbody id="rdTagged"></tbody></table></div></div>
+    <div class="tw"><table><thead><tr><th>Start</th><th>Operation</th><th>Squad</th><th>Planet</th><th></th></tr></thead><tbody id="rdTagged"></tbody></table></div></div>
   </div>
   <div class="card" id="rdEdit" hidden>
    <h3 id="rdTitle">New raid</h3>
@@ -195,7 +206,7 @@ select,input[type=datetime-local]{font:inherit;background:var(--bg);color:var(--
     <label>Notes (optional)<input type="text" id="rdNotes" maxlength="200"></label>
    </div>
    <div class="row" style="margin-top:10px"><button class="b" id="rdFind">Find deployments</button><span class="small muted" id="rdMsg"></span></div>
-   <div class="tw" style="margin-top:10px;max-height:46vh"><table><thead><tr><th></th><th>Start (Paris)</th><th>Operation</th><th>Squad (host first)</th><th>Planet</th><th>Note</th></tr></thead><tbody id="rdCand"></tbody></table></div>
+   <div class="tw" style="margin-top:10px;max-height:46vh"><table><thead><tr><th></th><th>Start</th><th>Operation</th><th>Squad (host first)</th><th>Planet</th><th>Note</th></tr></thead><tbody id="rdCand"></tbody></table></div>
    <div class="row" style="margin-top:10px"><button class="b primary" id="rdSave" style="font-size:15px;padding:10px 20px">Save raid</button>
     <button class="b" id="rdCancel">Cancel</button><button class="b danger" id="rdDel" hidden>Delete raid</button></div>
   </div>
@@ -358,7 +369,35 @@ async function upload(files, kind){
 
 // corrections
 let CORR = [];
-async function loadCorr(){ await guard(async()=>{ CORR = (await api('/api/corrections')).rows; drawCorr(); }); }
+async function loadCorr(){ await guard(async()=>{ CORR = (await api('/api/corrections')).rows; drawCorr(); const dj=await api('/api/duplicates'); drawDupes(dj.rows); drawUnread(dj.unreadable||[]); }); }
+function drawUnread(rows){                      // pictures the program couldn't use
+  const box=$('#unBox'); box.innerHTML=''; box.hidden=!rows.length; if(!rows.length) return;
+  box.appendChild(el('h3',null,'Screenshots that could not be read ('+rows.length+')'));
+  box.appendChild(el('p','muted small','Usually a picture that isn\u2019t an end-of-mission stat screen. Move it aside (it goes to a _set_aside folder next to it, nothing is deleted), or keep it and stop being asked.'));
+  rows.forEach(r=>{
+    const card=el('div','dup'); const s=el('div','dside'); const im=el('img'); im.src='/api/shot?f='+encodeURIComponent(r.file); im.loading='lazy';
+    im.onclick=()=>lightbox(im.src, r.file); s.append(im, el('div','small mono',r.file), el('div','small muted',r.error));
+    const mv=el('button','b small','Move it aside'); mv.onclick=()=>act(r.file,'move');
+    const kp=el('button','b small','Keep it, stop asking'); kp.onclick=()=>act(r.file,'keep');
+    const bs=el('div','ab'); bs.style.cssText='display:flex;flex-direction:column;gap:6px'; bs.append(mv,kp);
+    card.append(s, bs); box.appendChild(card);
+  });
+  async function act(file, action){ await guard(async()=>{ const j=await api('/api/duplicates',{file, action, kind:'unreadable'}); toast(j.msg); loadCorr(); refresh(); }); }
+}
+function drawDupes(rows){                       // same picture twice: which one goes aside?
+  const box=$('#dupBox'); box.innerHTML=''; box.hidden=!rows.length; if(!rows.length) return;
+  box.appendChild(el('h3',null,'Duplicate screenshots ('+rows.length+')'));
+  box.appendChild(el('p','muted small','These files are exactly the same picture. Only one is read. Move one aside (it goes to a _duplicates folder next to it, nothing is deleted), or keep both and stop being asked.'));
+  rows.forEach(d=>{
+    const card=el('div','dup');
+    const side=(name)=>{ const s=el('div','dside'); const im=el('img'); im.src='/api/shot?f='+encodeURIComponent(name); im.loading='lazy';
+      im.onclick=()=>lightbox(im.src, name); const b=el('button','b small','Move this one aside');
+      b.onclick=()=>act(name,'move'); s.append(im, el('div','small mono',name), b); return s; };
+    const keep=el('button','b small','Keep both, stop asking'); keep.onclick=()=>act(d.file,'keep');
+    card.append(side(d.same_as), el('div','dsame','='), side(d.file), keep); box.appendChild(card);
+  });
+  async function act(file, action){ await guard(async()=>{ const j=await api('/api/duplicates',{file, action}); toast(j.msg); loadCorr(); refresh(); }); }
+}
 function drawCorr(){
   const body = $('#corrBody'); body.innerHTML='';
   const showDone = $('#showDone').checked;
@@ -390,6 +429,15 @@ function preview(r){
   img.onerror = () => { img.replaceWith(el('p','muted','Screenshot not found in To_Process or the Drive folder.')); };
   img.onclick = () => lightbox(src, r.file); p.appendChild(img);
   p.appendChild(el('div','small muted','Click the picture to view it full screen (click anywhere or Esc to close). Slot 0 = leftmost player.'));
+}
+function noteBox(r){                                   // the host's notes, over the page
+  const o=el('div','lightbox'); const b=el('div','notebox');
+  b.append(el('h3',null,(r.operation||'Deployment')+' - host notes'), el('div','muted small',String(r.date||'').slice(0,16)+(r.planet?' · '+r.planet:'')));
+  String(r.host_notes||'').split(' | ').forEach(t=>b.appendChild(el('p',null,t)));
+  o.append(b, el('div','lbx','✕  click or Esc to close'));
+  const close=()=>{ o.remove(); document.removeEventListener('keydown', key); };
+  const key=e=>{ if(e.key==='Escape') close(); };
+  o.onclick=close; document.addEventListener('keydown', key); document.body.appendChild(o);
 }
 function lightbox(src, alt){
   const o=el('div','lightbox'); const i=el('img'); i.src=src; i.alt=alt||''; o.append(i, el('div','lbx','✕  click or Esc to close'));
@@ -432,13 +480,17 @@ async function loadHistory(){ await guard(async()=>{
   const hj=await api('/api/history'); const rows=hj.rows; HOPT={planets:hj.planets||[], fronts:hj.fronts||[]};
   const dlc=$('#knownCallsigns'); dlc.innerHTML=''; (hj.callsigns||[]).forEach(c=>{ const o=el('option'); o.value=c; dlc.appendChild(o); });
   const body=$('#histBody'); body.innerHTML='';
-  if(!rows.length){ const tr=el('tr'); const td=el('td','muted','The history is empty - it fills on every Run report.'); td.colSpan=10; tr.appendChild(td); body.appendChild(tr); return; }
+  if(!rows.length){ const tr=el('tr'); const td=el('td','muted','The history is empty - it fills on every Run report.'); td.colSpan=9; tr.appendChild(td); body.appendChild(tr); return; }
   rows.slice().reverse().forEach(r=>{
     const tr=el('tr'); const td=el('td'); const cb=el('input'); cb.type='checkbox'; cb.checked=(r.keep||'yes').toLowerCase()!=='no';
     cb.onchange=()=>guard(async()=>{ await api('/api/history/keep',{uid:r.uid, keep:cb.checked}); $('#histMsg').textContent='Saved - applies at the next Run report.'; });
     td.appendChild(cb); tr.appendChild(td);
-    [['date',String(r.date||'').slice(0,16)], ['operation',r.operation], ['planet',r.planet], ['front',r.front]].forEach(([f,v])=>{
-      const c=el('td',null,v||''); if((r.edited||[]).includes(f)){ c.classList.add('edited'); c.title='Fixed by hand (was: '+(r['orig_'+f]||'empty')+')'; } tr.appendChild(c); });
+    const fixed=(c,f)=>{ if((r.edited||[]).includes(f)){ c.classList.add('edited'); c.title='Fixed by hand (was: '+(r['orig_'+f]||'empty')+')'; } return c; };
+    const dc=fixed(el('td','nw',String(r.date||'').slice(0,10)),'date'); dc.appendChild(el('div','muted small',String(r.date||'').slice(11,16))); tr.appendChild(dc);
+    tr.appendChild(fixed(el('td',null,r.operation||''),'operation'));
+    const plc=fixed(el('td',null,r.planet||''),'planet');                 // planet, front underneath
+    if(r.front){ const fd=el('div','muted small',r.front); if((r.edited||[]).includes('front')){ plc.classList.add('edited'); plc.title='Fixed by hand (front was: '+(r.orig_front||'empty')+')'; } plc.appendChild(fd); }
+    tr.appendChild(plc);
     const tdm=el('td'); tdm.style.whiteSpace='nowrap';                // mission screenshots, full screen
     for(let m=1;m<=3;m++){ const bm=el('button','mbtn',String(m)); bm.title='Mission '+m+' screenshot';
       if(m>Number(r.missions||0)){ bm.disabled=true; bm.title='No screenshot for mission '+m; }
@@ -446,17 +498,18 @@ async function loadHistory(){ await guard(async()=>{
         if(!mi) throw new Error('No screenshot for mission '+m+'.');
         lightbox('/api/shot?f='+encodeURIComponent(mi.file), mi.file); });
       tdm.appendChild(bm); }
-    tr.appendChild(tdm);
+    const bn=el('button','mbtn nbtn','📝'); bn.title=r.host_notes ? 'Host notes: '+r.host_notes : 'No notes from the host';
+    if(!r.host_notes) bn.disabled=true; else bn.onclick=()=>noteBox(r);
+    tdm.appendChild(bn); tr.appendChild(tdm);
     const pc=el('td',null,r.players||''); if(Object.keys(r.renamed||{}).length){ pc.classList.add('edited'); pc.title='Fixed by hand (was: '+(r.orig_players||'')+')'; }
     let bw=null;
     if(r.names_flag){ bw=el('button','warnb','⚠ check names'); bw.title=r.names_flag; pc.appendChild(el('br')); pc.appendChild(bw); }
     tr.appendChild(pc);
     tr.appendChild(el('td','num',r.kills)); tr.appendChild(el('td','num',r.deaths));
-    const tdp=el('td'); tdp.style.whiteSpace='nowrap';
-    const be=el('button','b small','Edit'); be.style.cssText='padding:4px 10px;margin-right:4px';
-    const bp=el('button','b small','Players ▾'); bp.style.cssText='padding:4px 10px'; tdp.append(be, bp); tr.appendChild(tdp);
+    const tdp=el('td','acts');
+    const be=el('button','b small','Edit'); const bp=el('button','b small','Players ▾'); const ab=el('div','ab'); ab.append(be, bp); tdp.appendChild(ab); tr.appendChild(tdp);
     body.appendChild(tr);
-    const sub=el('tr','sub'); sub.hidden=true; const sc=el('td'); sc.colSpan=10; sub.appendChild(sc); body.appendChild(sub);
+    const sub=el('tr','sub'); sub.hidden=true; const sc=el('td'); sc.colSpan=9; sub.appendChild(sc); body.appendChild(sub);
     let mode='';
     bp.onclick=()=>guard(async()=>{ if(mode==='players'){ sub.hidden=true; mode=''; bp.textContent='Players ▾'; return; }
       mode='players'; bp.textContent='Players ▴'; sub.hidden=false; await drawGrid(sc, r.uid); });
@@ -466,7 +519,7 @@ async function loadHistory(){ await guard(async()=>{
 function drawEdit(box, r){
   box.innerHTML=''; const f=el('div','fgrid'); f.style.gridTemplateColumns='repeat(auto-fit,minmax(200px,1fr))';
   const mk=(label, input)=>{ const l=el('label',null,label); l.appendChild(input); f.appendChild(l); return input; };
-  const d=el('input'); d.type='datetime-local'; d.value=String(r.date||'').slice(0,16).replace(' ','T'); mk('Start (Paris time)', d);
+  const d=el('input'); d.type='datetime-local'; d.value=String(r.date||'').slice(0,16).replace(' ','T'); mk('Start', d);
   const o=el('input'); o.type='text'; o.value=r.operation||''; mk('Operation', o);
   const p=el('select'); const opts=HOPT.planets.includes(r.planet)||!r.planet ? HOPT.planets : [r.planet].concat(HOPT.planets);
   opts.forEach(x=>{ const op=el('option',null,x); op.value=x; p.appendChild(op); }); p.value=r.planet||''; mk('Planet', p);
@@ -516,7 +569,7 @@ $('#histFile').onchange = e => upload([...e.target.files], 'history');
 // raids
 let RD = null, RDcur = null, RDcand = [], RDdirty = false;
 ['#rdUnit','#rdPlanet','#rdStart','#rdEnd'].forEach(id=>$(id).addEventListener('change',()=>{ RDdirty=true; }));
-function paris(utc){ if(!utc) return ''; try{ return new Date(utc+':00Z').toLocaleString('en-GB',{timeZone:'Europe/Paris',day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+' Paris'; }catch(e){ return ''; } }
+function paris(utc){ if(!utc) return ''; try{ return new Date(utc+':00Z').toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
 function fillSel(sel, opts, val){ sel.innerHTML=''; opts.forEach(([v,l])=>{ const o=el('option',null,l); o.value=v; sel.appendChild(o); }); sel.value=val; if(sel.value!==val && opts.length) sel.selectedIndex=0; }
 async function loadRaids(){ await guard(async()=>{
   RD = await api('/api/raids'); const body=$('#rdList'); body.innerHTML='';

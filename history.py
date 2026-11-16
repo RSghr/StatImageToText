@@ -37,7 +37,7 @@ FRONT_NAMES = ["Terminids", "Automatons", "Illuminates"]
 
 DEP_COLUMNS = ["uid", "keep", "date", "operation", "planet", "sector", "difficulty", "front", "success",
                "missions", "players", "kills", "deaths", "deployment", "deployment_id",
-               "files", "added", "updated", "check"]
+               "files", "added", "updated", "check", "host_notes"]
 
 
 def file_uid(files) -> str:
@@ -99,6 +99,7 @@ def summarize(stats: pd.DataFrame, old_deps: pd.DataFrame) -> pd.DataFrame:
             deaths=int(pd.to_numeric(g.get("deaths"), errors="coerce").fillna(0).sum()),
             deployment=get("deployment"), deployment_id=get("deployment_id"),
             files=" | ".join(sorted(set(map(str, g["file"])))),
+            host_notes=get("host_notes"),
             check=next((x.group(0) for m in g.get("name_check", pd.Series(dtype=str)).astype(object).fillna("").astype(str)
                         if (x := re.search(r"player order[^()]*\([^()]*\)", m))), "")[:400],
             added=added.get(str(uid)) or now, updated=now))
@@ -328,15 +329,16 @@ def apply_edits(stats: pd.DataFrame) -> pd.DataFrame:
         m = uid == u
         if not m.any():
             continue
+        # player renames all at once: a swap (A -> B and B -> A) must not end up as B twice
+        names = stats["player"].astype(str)
+        renames = [(m & (names == f[7:]), v) for f, v in d.items() if f.startswith("player:")]
+        for pm, v in renames:                                  # rename one player in this deployment only
+            stats.loc[pm, "player"] = v
+            if "ocr_name" in stats.columns:                   # (so the in-game name can't bring the old one back)
+                stats["ocr_name"] = stats["ocr_name"].astype(object)
+                stats.loc[pm, "ocr_name"] = v
         for f, v in d.items():
-            if f == "names_ok":
-                continue
-            if f.startswith("player:"):                       # rename one player in this deployment only
-                pm = m & (stats["player"].astype(str) == f[7:])
-                stats.loc[pm, "player"] = v
-                if "ocr_name" in stats.columns:               # (so the in-game name can't bring the old one back)
-                    stats["ocr_name"] = stats["ocr_name"].astype(object)
-                    stats.loc[pm, "ocr_name"] = v
+            if f == "names_ok" or f.startswith("player:"):
                 continue
             if f not in stats.columns:
                 stats[f] = ""

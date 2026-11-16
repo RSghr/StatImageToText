@@ -380,9 +380,9 @@ def patch_report(page: str, ms: dict) -> str:
     page = page.replace("</head>", CSS.replace("{{CCVARS}}", unit_colors.CSS_VARS) + "</head>", 1)
     if ms["recent"]:                    # just reached: right at the top; "almost there" stays above the highlights
         page = page.replace('<main class="wrap">', '<main class="wrap">\n' + cards, 1)
-        page = page.replace("<h2>Highlights</h2>", close + "<h2>Highlights</h2>", 1)
+        page = page.replace("<h2>Weekly highlights!</h2>", close + "<h2>Weekly highlights!</h2>", 1)
     else:                               # otherwise both just above the highlights
-        page = page.replace("<h2>Highlights</h2>", cards + close + "<h2>Highlights</h2>", 1)
+        page = page.replace("<h2>Weekly highlights!</h2>", cards + close + "<h2>Weekly highlights!</h2>", 1)
     page = page.replace("<h2>Deployment log</h2>", log_section(ms) + "<h2>Deployment log</h2>", 1)
     return page.replace("</main>", FIT_JS + "</main>", 1)
 

@@ -61,6 +61,9 @@ function onOpen() {
     .addItem('Write ' + CONFIG.answersFileName + ' now', 'writeAnswersNow')
     .addItem('Write ' + CONFIG.rosterFileName + ' (company rosters) now', 'writeRosterNow')
     .addSeparator()
+    .addItem('Discord: set the notification webhook', 'setDiscordWebhook')
+    .addItem('Discord: send a test notification', 'testDiscordNotification')
+    .addSeparator()
     .addItem('Update the form\'s planet list from the "' + CONFIG.planetsSheet + '" tab', 'updatePlanetDropdown')
     .addItem('Copy the form\'s current planet list into the "' + CONFIG.planetsSheet + '" tab', 'exportPlanetList')
     .addToUi();
@@ -150,8 +153,67 @@ function exportRoster_() {
 /** Trigger handler for new answers. */
 function onFormSubmitRename(e) {
   var sheet = e && e.range ? e.range.getSheet() : sheet_();
-  processRow_(sheet, e && e.range ? e.range.getRow() : sheet.getLastRow());
+  var row = e && e.range ? e.range.getRow() : sheet.getLastRow();
+  var out = processRow_(sheet, row);
   exportAnswers_();
+  try { notify_(sheet, row, out); } catch (err) { console.log('Discord notification failed: ' + err); }
+}
+
+/* ---------- Discord notification for every new answer ---------- */
+
+/** Menu: paste the webhook URL of your private channel (kept in the script's settings, not in the code). */
+function setDiscordWebhook() {
+  var ui = SpreadsheetApp.getUi();
+  var r = ui.prompt('Discord notification',
+    'Paste the webhook URL of the channel to notify (Discord: channel settings > Integrations > Webhooks > ' +
+    'New webhook > Copy webhook URL).\nLeave empty to turn the notifications off.', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  var url = r.getResponseText().trim();
+  var props = PropertiesService.getScriptProperties();
+  if (!url) { props.deleteProperty('DISCORD_WEBHOOK'); ui.alert('Discord notifications are off.'); return; }
+  if (!/^https:\/\/(\w+\.)?discord(app)?\.com\/api\/webhooks\//.test(url)) { ui.alert('That is not a Discord webhook URL.'); return; }
+  props.setProperty('DISCORD_WEBHOOK', url);
+  ui.alert('Saved. Use "Send a test notification" to check it.');
+}
+
+/** Menu: post the last answer again, to check the webhook. */
+function testDiscordNotification() {
+  var sheet = sheet_();
+  notify_(sheet, sheet.getLastRow(), { copied: 0, problems: [] }, true);
+  ui_('Sent - look in your Discord channel.');
+}
+
+function notify_(sheet, row, out, test) {
+  var url = PropertiesService.getScriptProperties().getProperty('DISCORD_WEBHOOK');
+  if (!url) return;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var values = sheet.getRange(row, 1, 1, headers.length).getValues()[0];
+  var get = function (start) {                     // first column whose header starts with this
+    for (var i = 0; i < headers.length; i++) {
+      if (String(headers[i]).trim().toLowerCase().indexOf(start.toLowerCase()) === 0) return values[i];
+    }
+    return '';
+  };
+  var tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  var when = get('Operation starting date');
+  var unix = when instanceof Date ? Math.floor(when.getTime() / 1000) : null;
+  var squad = [CONFIG.columns.host, CONFIG.columns.a1, CONFIG.columns.a2, CONFIG.columns.a3]
+    .map(function (h) { return String(get(h) || '').trim(); }).filter(String);
+  var notes = String(get('Any notes') || '').trim();
+  var lines = [
+    (test ? '🧪 Test - ' : '📥 ') + '**New deployment register** - ' + (String(get('Operation Name')).trim() || 'no name'),
+    [unix ? '<t:' + unix + ':f>' : '', String(get('Planet')).trim(), String(get('Enemy')).trim(),
+     get('Difficulty') ? 'difficulty ' + get('Difficulty') : ''].filter(String).join(' · '),
+    'Squad: ' + (squad.join(', ') || '?'),
+    out && out.copied ? out.copied + ' screenshot' + (out.copied > 1 ? 's' : '') + ' saved to ' + CONFIG.targetFolderName : ''
+  ];
+  if (notes) lines.push('> ' + notes.replace(/\n+/g, ' ').slice(0, 300));
+  (out && out.problems || []).forEach(function (p) { lines.push('⚠️ ' + p); });
+  UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ content: lines.filter(String).join('\n').slice(0, 1900),
+                              allowed_mentions: { parse: [] } })   // never pings anyone
+  });
 }
 
 /** Process every answer that wasn't processed yet. */

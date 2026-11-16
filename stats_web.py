@@ -239,6 +239,90 @@ def write_csv(path: Path, rows: list[dict], fields: list[str]):
 _SHOTS = {"t": 0.0, "map": {}}
 
 
+DUPES = HISTORY / "duplicates.json"
+DUPES_OK = HISTORY / "duplicates_ok.txt"
+
+
+def duplicates() -> list:
+    """Screenshots that are the same picture as another one (found by the last run), minus the ones settled."""
+    try:
+        rows = json.loads(DUPES.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return []
+    try:
+        ok = set(DUPES_OK.read_text(encoding="utf-8").split())
+    except OSError:
+        ok = set()
+    return [d for d in rows if d.get("hash") not in ok and Path(d.get("path", "")).exists()
+            and Path(d.get("same_as_path", "")).exists()]
+
+
+def settle_duplicate(file: str, action: str) -> str:
+    d = next((x for x in duplicates() if file in (x["file"], x["same_as"])), None)
+    if not d:
+        raise ValueError("This duplicate is not listed any more - run the report again.")
+    if action == "keep":                    # same picture on purpose: stop asking (the copy is still not read twice)
+        with DUPES_OK.open("a", encoding="utf-8") as f:
+            f.write(d["hash"] + "\n")
+        return "OK - it won't be asked again."
+    if action != "move":
+        raise ValueError("Unknown action")
+    msg = move_aside(Path(d["path"] if file == d["file"] else d["same_as_path"]), "_duplicates")
+    rows = [x for x in json.loads(DUPES.read_text(encoding="utf-8")) if x.get("hash") != d["hash"]]
+    DUPES.write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    return msg
+
+
+UNREAD = HISTORY / "unreadable.json"
+UNREAD_OK = HISTORY / "unreadable_ok.txt"
+
+
+def unreadable() -> list:
+    """Screenshots the last run couldn't use (not a stat screen, ...), minus the ones settled."""
+    try:
+        rows = json.loads(UNREAD.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return []
+    try:
+        ok = set(UNREAD_OK.read_text(encoding="utf-8").splitlines())
+    except OSError:
+        ok = set()
+    idx = shot_index()
+    return [r for r in rows if r.get("file") not in ok and r.get("file") in idx]
+
+
+def settle_unreadable(file: str, action: str) -> str:
+    if not any(r["file"] == file for r in unreadable()):
+        raise ValueError("This screenshot is not listed any more - run the report again.")
+    if action == "keep":
+        with UNREAD_OK.open("a", encoding="utf-8") as f:
+            f.write(file + "\n")
+        return "OK - it won't be listed again (it still can't be read)."
+    if action != "move":
+        raise ValueError("Unknown action")
+    msg = move_aside(shot_index()[file], "_set_aside")
+    rows = [r for r in json.loads(UNREAD.read_text(encoding="utf-8")) if r.get("file") != file]
+    UNREAD.write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    return msg
+
+
+def move_aside(p: Path, folder: str) -> str:
+    """Into <folder> next to the file (folders starting with _ are skipped by the program). Nothing is deleted."""
+    roots = [r.resolve() for r in (drive_folder(), TO_PROCESS) if r]
+    if not any(r in p.resolve().parents for r in roots):
+        raise ValueError("That file is not in the screenshot folders.")
+    dest = p.parent / folder
+    dest.mkdir(exist_ok=True)
+    target = dest / p.name
+    n = 1
+    while target.exists():
+        target = dest / f"{p.stem}_{n}{p.suffix}"
+        n += 1
+    shutil.move(str(p), str(target))
+    _SHOTS["t"] = 0                         # forget the old screenshot list
+    return f"Moved {p.name} into the {dest.name} folder next to it - nothing is deleted."
+
+
 def shot_index() -> dict:
     if time.time() - _SHOTS["t"] < 20:
         return _SHOTS["map"]
@@ -246,7 +330,8 @@ def shot_index() -> dict:
     for root in (drive_folder(), TO_PROCESS):
         if root and root.exists():
             for p in root.rglob("*"):
-                if p.is_file() and p.suffix.lower() in IMG_EXT:
+                if p.is_file() and p.suffix.lower() in IMG_EXT and not any(
+                        x.startswith("_") for x in p.relative_to(root).parts[:-1]):
                     m.setdefault(p.name, p)
     _SHOTS.update(t=time.time(), map=m)
     return m
@@ -260,7 +345,7 @@ def status() -> dict:
     url = PUBLISHED.read_text(encoding="utf-8").strip() if PUBLISHED.exists() else ""
     return dict(shots_local=count_images(), shots_drive=_count(drv) if drv else 0, drive=str(drv or ""),
                 drive_setting=set_drv, drive_ok=bool(drv), form=form, history=history_count(),
-                last_report=last_report(), to_check=open_corrections(), running=JOBS.running,
+                last_report=last_report(), to_check=open_corrections() + len(duplicates()) + len(unreadable()), running=JOBS.running,
                 published=url if url.startswith("https://") else "",
                 has_report=(OUTPUT / "report.html").exists(), has_players=(OUTPUT / "players.html").exists(),
                 trust_form_order=bool(load_settings().get("trust_form_order", True)))
@@ -341,6 +426,8 @@ class Handler(BaseHTTPRequestHandler):
                     lines = JOBS.log[since:]
                     total = len(JOBS.log)
                 return self._json({"lines": lines, "next": total, "running": JOBS.running})
+            if url.path == "/api/duplicates":
+                return self._json({"rows": duplicates(), "unreadable": unreadable()})
             if url.path == "/api/corrections":
                 return self._json({"rows": read_csv(CORR)})
             if url.path == "/api/players":
@@ -485,6 +572,15 @@ class Handler(BaseHTTPRequestHandler):
                     return self._err(str(e))
             if path == "/api/import":
                 return self._import(b)
+            if path == "/api/duplicates":
+                if JOBS.running:
+                    return self._err("Wait for the run to finish.", 409)
+                try:
+                    fn = settle_unreadable if b.get("kind") == "unreadable" else settle_duplicate
+                    msg = fn(str(b.get("file", "")), str(b.get("action", "")))
+                except (ValueError, OSError) as e:
+                    return self._err(str(e))
+                return self._json({"ok": True, "msg": msg})
             if path == "/api/corrections":
                 return self._save_corrections(b)
             if path == "/api/players":

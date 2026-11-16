@@ -74,6 +74,20 @@ Images already read are remembered, so re-downloading the whole folder each time
 | Copy & rename all screenshots now | processes every answer not copied yet (safe to run any time) |
 | Turn on automatic renaming for new answers | installs the on-submit trigger (run once) |
 | Forget what was already copied | makes the next "Copy & rename" copy everything again (delete the old copies first) |
+| Discord: set the notification webhook | paste a channel's webhook URL: every new answer then posts a short message there |
+| Discord: send a test notification | posts the last answer again, to check it works |
+
+## Discord notification
+
+Every new answer can post a message in a private channel, so you know when to run the report:
+operation, start time, planet, enemy, difficulty, squad, screenshots saved, the host's notes and any problem.
+It never pings anyone. The webhook URL is kept in the script's settings, not in the code.
+
+1. Discord: channel settings → Integrations → Webhooks → New webhook → Copy webhook URL.
+2. Spreadsheet: **505th Stats → Discord: set the notification webhook**, paste, OK.
+3. **505th Stats → Discord: send a test notification**. First time Google asks to allow
+   "connect to an external service": allow it.
+4. If the automatic trigger was installed before, nothing else to do. Empty URL = notifications off.
 
 ## Notes
 * Callsigns are cleaned for file names (`Phoenix warrior` → `Phoenixwarrior`), only letters and digits kept.

@@ -51,7 +51,7 @@ CDN_HOSTS = {"cdn.discordapp.com", "media.discordapp.net"}
 # same headers as the Google Form, so hd2stats reads both the same way
 FIELDS = ["Timestamp", "Host Callsign", "Attendee 1 Callsign", "Attendee 2 Callsign", "Attendee 3 Callsign",
           "Operation starting date", "Operation Name", "Planet", "Enemy", "Difficulty", "Operation Success",
-          "Raid", "Register ID", "Source"]
+          "Raid", "Any notes", "Register ID", "Source"]
 KEYS = {  # accepted spellings in deployment.json / "Key: value" lines -> field
     "register_id": "id", "register": "id", "id": "id", "registerid": "id", "deploymentid": "id",
     "status": "status", "state": "status",
@@ -64,6 +64,7 @@ KEYS = {  # accepted spellings in deployment.json / "Key: value" lines -> field
     "difficulty": "difficulty", "diff": "difficulty",
     "success": "success", "operationsuccess": "success", "completed": "success",
     "raid": "raid",
+    "notes": "notes", "note": "notes", "remarks": "notes", "comment": "notes", "comments": "notes",
     "order": "order", "screenorder": "order", "lefttoright": "order",
 }
 
@@ -348,7 +349,7 @@ def place_files(rec: dict):
 
 
 ROW_FIELDS = ["Operation starting date", "Operation Name", "Planet", "Enemy", "Difficulty", "Operation Success",
-              "Raid"]
+              "Raid", "Any notes"]
 NAME_FIELDS = ["Host Callsign", "Attendee 1 Callsign", "Attendee 2 Callsign", "Attendee 3 Callsign"]
 
 
@@ -405,7 +406,8 @@ def sync(say=print, fetch_messages=None, fetch=download) -> dict:
         dep = "D" + posted.strftime("%Y%m%d%H%M%S")
         new = {"Operation starting date": start_text(d.get("start")), "Operation Name": d.get("operation", ""),
                "Planet": d.get("planet", ""), "Enemy": d.get("enemy", ""), "Difficulty": d.get("difficulty", ""),
-               "Operation Success": yes_no(d.get("success", "")), "Raid": yes_no(d.get("raid", ""))}
+               "Operation Success": yes_no(d.get("success", "")), "Raid": yes_no(d.get("raid", "")),
+               "Any notes": d.get("notes", "")}
         rec = dict(old or {})
         rec.update({"posted": posted.isoformat(), "message": msg["id"], "status": status,
                     "Timestamp": posted.strftime("%Y-%m-%d %H:%M:%S"), "Register ID": key, "Source": "Discord"})
